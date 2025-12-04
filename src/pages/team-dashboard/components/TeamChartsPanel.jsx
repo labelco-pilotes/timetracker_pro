@@ -1,234 +1,264 @@
-import React, { useMemo } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import React, { useMemo, useState } from 'react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from 'recharts';
+import Icon from '../../../components/AppIcon';
+import Select from '../../../components/ui/Select';
 
+const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#6366f1', '#f97316', '#14b8a6'];
+
+/**
+ * Panneau de graphiques équipe
+ * - Heures par projet
+ * - Heures par collaborateur
+ * - Répartition par catégorie (avec filtre projet + coût en €)
+ */
 const TeamChartsPanel = ({ timeEntries = [] }) => {
-  const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#6366f1', '#f97316', '#14b8a6'];
+  const [selectedProjectId, setSelectedProjectId] = useState('');
 
-  // Calculate hours by project
+  // Heures par projet
   const hoursByProject = useMemo(() => {
-    const projectMap = {};
-    
-    timeEntries?.forEach(entry => {
-      if (entry?.projet) {
-        const projectName = entry?.projet?.nom;
-        if (!projectMap?.[projectName]) {
-          projectMap[projectName] = 0;
-        }
-        projectMap[projectName] += entry?.dureeHeures || 0;
-      }
+    const map = new Map();
+    timeEntries.forEach((e) => {
+      if (!e?.projet) return;
+      const key = e.projet.nom || 'Projet sans nom';
+      map.set(key, (map.get(key) || 0) + (e.dureeHeures || 0));
     });
-
-    return Object.entries(projectMap)?.map(([name, hours]) => ({ name, hours: parseFloat(hours?.toFixed(1)) }))?.sort((a, b) => b?.hours - a?.hours);
+    return Array.from(map.entries()).map(([name, hours]) => ({ name, hours }));
   }, [timeEntries]);
 
-  // Calculate cost by project
-  const costByProject = useMemo(() => {
-    const projectMap = {};
-    
-    timeEntries?.forEach(entry => {
-      if (entry?.projet) {
-        const projectName = entry?.projet?.nom;
-        const tauxHoraire = entry?.collaborateur?.tauxHoraire || 0;
-        const cost = (entry?.dureeHeures || 0) * tauxHoraire;
-        
-        if (!projectMap?.[projectName]) {
-          projectMap[projectName] = 0;
-        }
-        projectMap[projectName] += cost;
-      }
-    });
-
-    return Object.entries(projectMap)?.map(([name, cost]) => ({ name, cost: parseFloat(cost?.toFixed(2)) }))?.sort((a, b) => b?.cost - a?.cost);
-  }, [timeEntries]);
-
-  // Calculate hours by collaborator
+  // Heures par collaborateur
   const hoursByCollaborator = useMemo(() => {
-    const collabMap = {};
-    
-    timeEntries?.forEach(entry => {
-      if (entry?.collaborateur) {
-        const collabName = entry?.collaborateur?.nomComplet;
-        if (!collabMap?.[collabName]) {
-          collabMap[collabName] = 0;
-        }
-        collabMap[collabName] += entry?.dureeHeures || 0;
-      }
+    const map = new Map();
+    timeEntries.forEach((e) => {
+      if (!e?.collaborateur) return;
+      const key = e.collaborateur.nomComplet || e.collaborateur.email;
+      map.set(key, (map.get(key) || 0) + (e.dureeHeures || 0));
     });
-
-    return Object.entries(collabMap)?.map(([name, hours]) => ({ name, hours: parseFloat(hours?.toFixed(1)) }))?.sort((a, b) => b?.hours - a?.hours);
+    return Array.from(map.entries()).map(([name, hours]) => ({ name, hours }));
   }, [timeEntries]);
 
-  // Calculate cost by collaborator
-  const costByCollaborator = useMemo(() => {
-    const collabMap = {};
-    
-    timeEntries?.forEach(entry => {
-      if (entry?.collaborateur) {
-        const collabName = entry?.collaborateur?.nomComplet;
-        const tauxHoraire = entry?.collaborateur?.tauxHoraire || 0;
-        const cost = (entry?.dureeHeures || 0) * tauxHoraire;
-        
-        if (!collabMap?.[collabName]) {
-          collabMap[collabName] = 0;
-        }
-        collabMap[collabName] += cost;
+  // Projets disponibles pour le filtre du donut
+  const projectFilterOptions = useMemo(() => {
+    const map = new Map();
+    timeEntries.forEach((e) => {
+      if (e?.projet) {
+        map.set(e.projetId, e.projet.nom || 'Projet sans nom');
       }
     });
-
-    return Object.entries(collabMap)?.map(([name, cost]) => ({ name, cost: parseFloat(cost?.toFixed(2)) }))?.sort((a, b) => b?.cost - a?.cost);
+    return [
+      { value: '', label: 'Tous les projets' },
+      ...Array.from(map.entries()).map(([value, label]) => ({ value, label })),
+    ];
   }, [timeEntries]);
 
-  // Calculate hours by category
-  const hoursByCategory = useMemo(() => {
-    const categoryMap = {};
-    
-    timeEntries?.forEach(entry => {
-      if (entry?.categorie) {
-        const categoryName = entry?.categorie?.nom;
-        if (!categoryMap?.[categoryName]) {
-          categoryMap[categoryName] = 0;
-        }
-        categoryMap[categoryName] += entry?.dureeHeures || 0;
+  // Données pour le donut par catégorie (filtrées par projet si sélectionné)
+  const categoryCostData = useMemo(() => {
+    const map = new Map();
+
+    timeEntries.forEach((e) => {
+      if (selectedProjectId && e.projetId !== selectedProjectId) return;
+
+      const catName = e?.categorie?.nom || 'Sans catégorie';
+      const hours = e?.dureeHeures || 0;
+      const rate = e?.collaborateur?.tauxHoraire || 0;
+      const cost = hours * rate;
+
+      if (!map.has(catName)) {
+        map.set(catName, { name: catName, hours: 0, cost: 0 });
       }
+      const current = map.get(catName);
+      current.hours += hours;
+      current.cost += cost;
+      map.set(catName, current);
     });
 
-    return Object.entries(categoryMap)?.map(([name, value]) => ({ name, value: parseFloat(value?.toFixed(1)) }))?.sort((a, b) => b?.value - a?.value);
-  }, [timeEntries]);
+    return Array.from(map.values());
+  }, [timeEntries, selectedProjectId]);
 
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('fr-FR', {
+  const formatCurrency = (value) =>
+    new Intl.NumberFormat('fr-FR', {
       style: 'currency',
       currency: 'EUR',
       minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    })?.format(value);
+      maximumFractionDigits: 0,
+    }).format(value || 0);
+
+  const CustomPieTooltip = ({ active, payload }) => {
+    if (!active || !payload || !payload.length) return null;
+    const { name, hours, cost } = payload[0].payload;
+    return (
+      <div className="bg-card border border-border rounded-md p-2 text-xs">
+        <div className="font-medium text-foreground">{name}</div>
+        <div className="text-muted-foreground">
+          {hours.toFixed(1)} h • {formatCurrency(cost)}
+        </div>
+      </div>
+    );
   };
 
-  const CustomTooltip = ({ active, payload, label, isCurrency = false }) => {
-    if (active && payload && payload?.length) {
-      return (
-        <div className="bg-card border border-border rounded-lg shadow-lg p-3">
-          <p className="text-sm font-medium text-foreground mb-1">{label}</p>
-          {payload?.map((entry, index) => (
-            <p key={index} className="text-sm text-muted-foreground">
-              {entry?.name}: {isCurrency ? formatCurrency(entry?.value) : `${entry?.value}h`}
-            </p>
-          ))}
-        </div>
-      );
-    }
-    return null;
+  const renderCategoryLabel = (props) => {
+    const { cx, cy, midAngle, innerRadius, outerRadius, index } = props;
+    const RADIAN = Math.PI / 180;
+    const radius = innerRadius + (outerRadius - innerRadius) * 0.6;
+    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+    const data = categoryCostData[index];
+    if (!data) return null;
+
+    return (
+      <text
+        x={x}
+        y={y}
+        fill="#fff"
+        textAnchor={x > cx ? 'start' : 'end'}
+        dominantBaseline="central"
+        fontSize={11}
+      >
+        {formatCurrency(data.cost)}
+      </text>
+    );
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-      {/* Hours by Project */}
-      <div className="bg-card rounded-lg shadow-sm border border-border p-6">
-        <h3 className="text-lg font-semibold text-foreground mb-4">Heures par projet</h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={hoursByProject}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-            <XAxis 
-              dataKey="name" 
-              stroke="hsl(var(--muted-foreground))"
-              fontSize={12}
-              angle={-45}
-              textAnchor="end"
-              height={80}
-            />
-            <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-            <Tooltip content={<CustomTooltip />} />
-            <Legend />
-            <Bar dataKey="hours" name="Heures" fill="#3b82f6" />
-          </BarChart>
-        </ResponsiveContainer>
+    <div className="space-y-4">
+      {/* Heures par projet */}
+      <div className="bg-card rounded-lg shadow-sm border border-border p-4">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-2">
+            <Icon name="BarChart2" size={18} className="text-primary" />
+            <h3 className="text-sm font-semibold text-foreground">Heures par projet</h3>
+          </div>
+        </div>
+        {hoursByProject.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Aucune saisie pour la période sélectionnée.
+          </p>
+        ) : (
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={hoursByProject} margin={{ left: 0, right: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-35} textAnchor="end" height={70} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Bar dataKey="hours" name="Heures" fill="#3b82f6" />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
       </div>
-      {/* Cost by Project */}
-      <div className="bg-card rounded-lg shadow-sm border border-border p-6">
-        <h3 className="text-lg font-semibold text-foreground mb-4">Coût par projet (€)</h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={costByProject}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-            <XAxis 
-              dataKey="name" 
-              stroke="hsl(var(--muted-foreground))"
-              fontSize={12}
-              angle={-45}
-              textAnchor="end"
-              height={80}
-            />
-            <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-            <Tooltip content={<CustomTooltip isCurrency={true} />} />
-            <Legend />
-            <Bar dataKey="cost" name="Coût (€)" fill="#10b981" />
-          </BarChart>
-        </ResponsiveContainer>
+
+      {/* Heures par collaborateur */}
+      <div className="bg-card rounded-lg shadow-sm border border-border p-4">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-2">
+            <Icon name="Users" size={18} className="text-primary" />
+            <h3 className="text-sm font-semibold text-foreground">
+              Heures par collaborateur
+            </h3>
+          </div>
+        </div>
+        {hoursByCollaborator.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Aucune saisie pour la période sélectionnée.
+          </p>
+        ) : (
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={hoursByCollaborator} margin={{ left: 0, right: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-35} textAnchor="end" height={70} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Bar dataKey="hours" name="Heures" fill="#8b5cf6" />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
       </div>
-      {/* Hours by Collaborator */}
-      <div className="bg-card rounded-lg shadow-sm border border-border p-6">
-        <h3 className="text-lg font-semibold text-foreground mb-4">Heures par collaborateur</h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={hoursByCollaborator}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-            <XAxis 
-              dataKey="name" 
-              stroke="hsl(var(--muted-foreground))"
-              fontSize={12}
-              angle={-45}
-              textAnchor="end"
-              height={80}
+
+      {/* Répartition par catégorie (coût) */}
+      <div className="bg-card rounded-lg shadow-sm border border-border p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center space-x-2">
+            <Icon name="PieChart" size={18} className="text-primary" />
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">
+                Répartition par catégorie (coût)
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Chaque tranche représente le coût estimé par catégorie.
+              </p>
+            </div>
+          </div>
+          <div className="w-52">
+            <Select
+              label="Projet"
+              placeholder="Tous les projets"
+              value={selectedProjectId}
+              onChange={(v) => setSelectedProjectId(v)}
+              options={projectFilterOptions}
             />
-            <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-            <Tooltip content={<CustomTooltip />} />
-            <Legend />
-            <Bar dataKey="hours" name="Heures" fill="#8b5cf6" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-      {/* Cost by Collaborator */}
-      <div className="bg-card rounded-lg shadow-sm border border-border p-6">
-        <h3 className="text-lg font-semibold text-foreground mb-4">Coût par collaborateur (€)</h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={costByCollaborator}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-            <XAxis 
-              dataKey="name" 
-              stroke="hsl(var(--muted-foreground))"
-              fontSize={12}
-              angle={-45}
-              textAnchor="end"
-              height={80}
-            />
-            <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-            <Tooltip content={<CustomTooltip isCurrency={true} />} />
-            <Legend />
-            <Bar dataKey="cost" name="Coût (€)" fill="#f59e0b" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-      {/* Hours by Category (Pie Chart) */}
-      <div className="bg-card rounded-lg shadow-sm border border-border p-6 lg:col-span-2">
-        <h3 className="text-lg font-semibold text-foreground mb-4">Répartition par catégorie</h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <PieChart>
-            <Pie
-              data={hoursByCategory}
-              cx="50%"
-              cy="50%"
-              labelLine={false}
-              label={({ name, percent }) => `${name}: ${(percent * 100)?.toFixed(0)}%`}
-              outerRadius={100}
-              fill="#8884d8"
-              dataKey="value"
-            >
-              {hoursByCategory?.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS?.[index % COLORS?.length]} />
+          </div>
+        </div>
+
+        {categoryCostData.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Aucune saisie pour cette sélection.
+          </p>
+        ) : (
+          <div className="flex flex-col lg:flex-row lg:items-center lg:space-x-6">
+            <div className="flex-1">
+              <ResponsiveContainer width="100%" height={260}>
+                <PieChart>
+                  <Pie
+                    data={categoryCostData}
+                    dataKey="cost"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={90}
+                    paddingAngle={2}
+                    labelLine={false}
+                    label={renderCategoryLabel}
+                  >
+                    {categoryCostData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={COLORS[index % COLORS.length]}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<CustomPieTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-4 lg:mt-0 lg:w-56 space-y-2">
+              {categoryCostData.map((item, index) => (
+                <div key={item.name} className="flex items-center justify-between text-xs">
+                  <div className="flex items-center space-x-2">
+                    <span
+                      className="inline-block w-3 h-3 rounded-sm"
+                      style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                    />
+                    <span className="text-foreground">{item.name}</span>
+                  </div>
+                  <div className="text-muted-foreground">
+                    {item.hours.toFixed(1)} h • {formatCurrency(item.cost)}
+                  </div>
+                </div>
               ))}
-            </Pie>
-            <Tooltip content={<CustomTooltip />} />
-            <Legend />
-          </PieChart>
-        </ResponsiveContainer>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
