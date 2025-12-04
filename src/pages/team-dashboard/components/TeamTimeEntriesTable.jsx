@@ -1,52 +1,21 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, Search } from 'lucide-react';
+import Icon from '../../../components/AppIcon';
 
-const TeamTimeEntriesTable = ({ timeEntries = [], filters = {} }) => {
+/**
+ * Tableau des saisies filtrées
+ */
+const TeamTimeEntriesTable = ({ timeEntries = [] }) => {
   const [sortField, setSortField] = useState('date');
-  const [sortDirection, setSortDirection] = useState('desc');
+  const [sortDir, setSortDir] = useState('desc');
 
-  // Format currency helper
-  const formatCurrency = (value) => {
-    if (value === null || value === undefined || value === 0) return '—';
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: 'EUR',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })?.format(value);
-  };
+  const sortedEntries = useMemo(() => {
+    const entries = [...(timeEntries || [])];
 
-  // Calculate cost for each entry
-  const calculateCost = (entry) => {
-    const tauxHoraire = entry?.collaborateur?.tauxHoraire || 0;
-    if (tauxHoraire === 0) return null;
-    return (entry?.dureeHeures || 0) * tauxHoraire;
-  };
-
-  // Filter and sort entries
-  const filteredAndSortedEntries = useMemo(() => {
-    let result = [...timeEntries];
-
-    // Apply search filter
-    if (filters?.searchTerm) {
-      const search = filters?.searchTerm?.toLowerCase();
-      result = result?.filter(entry => 
-        entry?.collaborateur?.nomComplet?.toLowerCase()?.includes(search) ||
-        entry?.projet?.nom?.toLowerCase()?.includes(search) ||
-        entry?.categorie?.nom?.toLowerCase()?.includes(search) ||
-        entry?.commentaire?.toLowerCase()?.includes(search)
-      );
-    }
-
-    // Sort
-    result?.sort((a, b) => {
-      let aVal, bVal;
+    entries.sort((a, b) => {
+      let aVal;
+      let bVal;
 
       switch (sortField) {
-        case 'date':
-          aVal = new Date(a.date);
-          bVal = new Date(b.date);
-          break;
         case 'collaborateur':
           aVal = a?.collaborateur?.nomComplet || '';
           bVal = b?.collaborateur?.nomComplet || '';
@@ -59,193 +28,184 @@ const TeamTimeEntriesTable = ({ timeEntries = [], filters = {} }) => {
           aVal = a?.categorie?.nom || '';
           bVal = b?.categorie?.nom || '';
           break;
-        case 'duree':
+        case 'dureeHeures':
           aVal = a?.dureeHeures || 0;
           bVal = b?.dureeHeures || 0;
           break;
-        case 'cout':
-          aVal = calculateCost(a) || 0;
-          bVal = calculateCost(b) || 0;
-          break;
+        case 'date':
         default:
-          aVal = a?.[sortField];
-          bVal = b?.[sortField];
+          aVal = a?.date || '';
+          bVal = b?.date || '';
+          break;
       }
 
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      if (aVal < bVal) return sortDir === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
       return 0;
     });
 
-    return result;
-  }, [timeEntries, filters, sortField, sortDirection]);
+    return entries;
+  }, [timeEntries, sortField, sortDir]);
 
-  // Format date
-  const formatDate = (dateString) => {
-    return new Date(dateString)?.toLocaleDateString('fr-FR', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
+  const totals = useMemo(() => {
+    const totalHours = timeEntries.reduce(
+      (sum, e) => sum + (e?.dureeHeures || 0),
+      0
+    );
+    const totalCost = timeEntries.reduce((sum, e) => {
+      const rate = e?.collaborateur?.tauxHoraire || 0;
+      return sum + (e?.dureeHeures || 0) * rate;
+    }, 0);
+
+    return { totalHours, totalCost };
+  }, [timeEntries]);
+
+  const formatCurrency = (value) =>
+    new Intl.NumberFormat('fr-FR', {
+      style: 'currency',
+      currency: 'EUR',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value || 0);
 
   const handleSort = (field) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    if (field === sortField) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortField(field);
-      setSortDirection('asc');
+      setSortDir('asc');
     }
   };
 
   const SortIcon = ({ field }) => {
-    if (sortField !== field) return <ChevronDown className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100" />;
-    return sortDirection === 'asc' 
-      ? <ChevronUp className="h-4 w-4 text-foreground" />
-      : <ChevronDown className="h-4 w-4 text-foreground" />;
+    if (field !== sortField) {
+      return <Icon name="ArrowUpDown" size={14} className="ml-1 text-muted-foreground" />;
+    }
+    return sortDir === 'asc' ? (
+      <Icon name="ChevronUp" size={14} className="ml-1 text-muted-foreground" />
+    ) : (
+      <Icon name="ChevronDown" size={14} className="ml-1 text-muted-foreground" />
+    );
   };
 
   return (
-    <div className="bg-card rounded-lg shadow-sm border border-border">
-      {/* Table Header */}
-      <div className="px-6 py-4 border-b border-border">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-foreground">Saisies de temps détaillées</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              {filteredAndSortedEntries?.length} saisie(s) trouvée(s)
-            </p>
-          </div>
+    <div className="bg-card rounded-lg shadow-sm border border-border overflow-hidden">
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">
+            Saisies détaillées
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            {sortedEntries.length} saisie(s) affichée(s) — {totals.totalHours.toFixed(1)} h, {formatCurrency(totals.totalCost)}
+          </p>
         </div>
       </div>
-      {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-muted/50">
-            <tr>
-              <th 
-                className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer group"
-                onClick={() => handleSort('date')}
-              >
-                <div className="flex items-center space-x-1">
-                  <span>Date</span>
-                  <SortIcon field="date" />
-                </div>
-              </th>
-              <th 
-                className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer group"
-                onClick={() => handleSort('collaborateur')}
-              >
-                <div className="flex items-center space-x-1">
-                  <span>Collaborateur</span>
-                  <SortIcon field="collaborateur" />
-                </div>
-              </th>
-              <th 
-                className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer group"
-                onClick={() => handleSort('projet')}
-              >
-                <div className="flex items-center space-x-1">
-                  <span>Projet</span>
-                  <SortIcon field="projet" />
-                </div>
-              </th>
-              <th 
-                className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer group"
-                onClick={() => handleSort('categorie')}
-              >
-                <div className="flex items-center space-x-1">
-                  <span>Catégorie</span>
-                  <SortIcon field="categorie" />
-                </div>
-              </th>
-              <th 
-                className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer group"
-                onClick={() => handleSort('duree')}
-              >
-                <div className="flex items-center space-x-1">
-                  <span>Durée</span>
-                  <SortIcon field="duree" />
-                </div>
-              </th>
-              <th 
-                className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer group"
-                onClick={() => handleSort('cout')}
-              >
-                <div className="flex items-center space-x-1">
-                  <span>Coût (€)</span>
-                  <SortIcon field="cout" />
-                </div>
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Commentaire
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {filteredAndSortedEntries?.length === 0 ? (
+
+      {sortedEntries.length === 0 ? (
+        <div className="p-4 text-sm text-muted-foreground">
+          Aucune saisie ne correspond aux filtres actuels.
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-muted">
               <tr>
-                <td colSpan="7" className="px-6 py-12 text-center">
-                  <div className="flex flex-col items-center justify-center">
-                    <Search className="h-12 w-12 text-muted-foreground mb-3" />
-                    <p className="text-muted-foreground">Aucune saisie de temps trouvée</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Essayez d'ajuster vos filtres de recherche
-                    </p>
+                <th
+                  className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide cursor-pointer"
+                  onClick={() => handleSort('date')}
+                >
+                  <div className="flex items-center">
+                    Date
+                    <SortIcon field="date" />
                   </div>
-                </td>
+                </th>
+                <th
+                  className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide cursor-pointer"
+                  onClick={() => handleSort('collaborateur')}
+                >
+                  <div className="flex items-center">
+                    Collaborateur
+                    <SortIcon field="collaborateur" />
+                  </div>
+                </th>
+                <th
+                  className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide cursor-pointer"
+                  onClick={() => handleSort('projet')}
+                >
+                  <div className="flex items-center">
+                    Projet
+                    <SortIcon field="projet" />
+                  </div>
+                </th>
+                <th
+                  className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide cursor-pointer"
+                  onClick={() => handleSort('categorie')}
+                >
+                  <div className="flex items-center">
+                    Catégorie
+                    <SortIcon field="categorie" />
+                  </div>
+                </th>
+                <th
+                  className="px-3 py-2 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide cursor-pointer"
+                  onClick={() => handleSort('dureeHeures')}
+                >
+                  <div className="flex items-center justify-end">
+                    Durée (h)
+                    <SortIcon field="dureeHeures" />
+                  </div>
+                </th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Coût (€)
+                </th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Commentaire
+                </th>
               </tr>
-            ) : (
-              filteredAndSortedEntries?.map((entry) => {
-                const cost = calculateCost(entry);
+            </thead>
+            <tbody>
+              {sortedEntries.map((e) => {
+                const rate = e?.collaborateur?.tauxHoraire || 0;
+                const cost = (e?.dureeHeures || 0) * rate;
+
                 return (
-                  <tr key={entry?.id} className="hover:bg-muted/50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                      {formatDate(entry?.date)}
+                  <tr
+                    key={e.id}
+                    className="border-t border-border hover:bg-muted/40 transition-colors"
+                  >
+                    <td className="px-3 py-2 align-top whitespace-nowrap text-xs text-muted-foreground">
+                      {e.date}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className="flex items-center">
-                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center mr-3">
-                          <span className="text-xs font-medium text-primary">
-                            {entry?.collaborateur?.nomComplet?.split(' ')?.map(n => n?.[0])?.join('') || '?'}
-                          </span>
-                        </div>
-                        <span className="text-foreground">{entry?.collaborateur?.nomComplet || '—'}</span>
+                    <td className="px-3 py-2 align-top">
+                      <div className="text-xs text-foreground">
+                        {e?.collaborateur?.nomComplet || '—'}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {e?.collaborateur?.email || ''}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                      {entry?.projet?.nom || <span className="text-muted-foreground italic">Non renseigné</span>}
+                    <td className="px-3 py-2 align-top text-xs text-foreground">
+                      {e?.projet?.nom || '—'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                      {entry?.categorie?.nom || <span className="text-muted-foreground italic">Non renseigné</span>}
+                    <td className="px-3 py-2 align-top text-xs text-foreground">
+                      {e?.categorie?.nom || '—'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground font-medium">
-                      {entry?.dureeHeures}h
+                    <td className="px-3 py-2 align-top text-right text-xs text-foreground">
+                      {(e?.dureeHeures || 0).toFixed(1)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground font-medium">
-                      {cost !== null ? formatCurrency(cost) : <span className="text-muted-foreground">—</span>}
+                    <td className="px-3 py-2 align-top text-right text-xs text-foreground whitespace-nowrap">
+                      {formatCurrency(cost)}
                     </td>
-                    <td className="px-6 py-4 text-sm text-muted-foreground max-w-xs truncate">
-                      {entry?.commentaire || '—'}
+                    <td className="px-3 py-2 align-top text-xs text-muted-foreground max-w-xs">
+                      <span className="line-clamp-2">
+                        {e?.commentaire || '—'}
+                      </span>
                     </td>
                   </tr>
                 );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-      {/* Footer with stats */}
-      {filteredAndSortedEntries?.length > 0 && (
-        <div className="px-6 py-4 border-t border-border bg-muted/30">
-          <div className="flex items-center justify-between text-sm">
-            <div className="text-muted-foreground">
-              Total: {filteredAndSortedEntries?.length} saisie(s)
-            </div>
-            <div className="text-foreground font-medium">
-              Total heures: {filteredAndSortedEntries?.reduce((sum, e) => sum + (e?.dureeHeures || 0), 0)?.toFixed(1)}h
-            </div>
-          </div>
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
