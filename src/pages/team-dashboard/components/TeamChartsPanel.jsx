@@ -14,14 +14,17 @@ import {
 import Icon from '../../../components/AppIcon';
 import Select from '../../../components/ui/Select';
 
-const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#6366f1', '#f97316', '#14b8a6'];
+const COLORS = [
+  '#3b82f6',
+  '#8b5cf6',
+  '#ec4899',
+  '#f59e0b',
+  '#10b981',
+  '#6366f1',
+  '#f97316',
+  '#14b8a6',
+];
 
-/**
- * Panneau de graphiques équipe
- * - Heures par projet
- * - Heures par collaborateur
- * - Répartition par catégorie (avec filtre projet + coût en €)
- */
 const TeamChartsPanel = ({ timeEntries = [] }) => {
   const [selectedProjectId, setSelectedProjectId] = useState('');
 
@@ -47,7 +50,21 @@ const TeamChartsPanel = ({ timeEntries = [] }) => {
     return Array.from(map.entries()).map(([name, hours]) => ({ name, hours }));
   }, [timeEntries]);
 
-  // Projets disponibles pour le filtre du donut
+  // 💶 Coût par projet = somme(durée * taux horaire)
+  const costByProject = useMemo(() => {
+    const map = new Map();
+    timeEntries.forEach((e) => {
+      if (!e?.projet) return;
+      const key = e.projet.nom || 'Projet sans nom';
+      const hours = e.dureeHeures || 0;
+      const rate = e.collaborateur?.tauxHoraire || 0;
+      const cost = hours * rate;
+      map.set(key, (map.get(key) || 0) + cost);
+    });
+    return Array.from(map.entries()).map(([name, cost]) => ({ name, cost }));
+  }, [timeEntries]);
+
+  // Options de projet pour filtrer le donut
   const projectFilterOptions = useMemo(() => {
     const map = new Map();
     timeEntries.forEach((e) => {
@@ -61,7 +78,7 @@ const TeamChartsPanel = ({ timeEntries = [] }) => {
     ];
   }, [timeEntries]);
 
-  // Données pour le donut par catégorie (filtrées par projet si sélectionné)
+  // Répartition par catégorie (coût) pour le donut
   const categoryCostData = useMemo(() => {
     const map = new Map();
 
@@ -137,7 +154,9 @@ const TeamChartsPanel = ({ timeEntries = [] }) => {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-2">
             <Icon name="BarChart2" size={18} className="text-primary" />
-            <h3 className="text-sm font-semibold text-foreground">Heures par projet</h3>
+            <h3 className="text-sm font-semibold text-foreground">
+              Heures par projet
+            </h3>
           </div>
         </div>
         {hoursByProject.length === 0 ? (
@@ -148,10 +167,57 @@ const TeamChartsPanel = ({ timeEntries = [] }) => {
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={hoursByProject} margin={{ left: 0, right: 8 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-35} textAnchor="end" height={70} />
+              <XAxis
+                dataKey="name"
+                tick={{ fontSize: 11 }}
+                interval={0}
+                angle={-35}
+                textAnchor="end"
+                height={70}
+              />
               <YAxis tick={{ fontSize: 11 }} />
               <Tooltip />
               <Bar dataKey="hours" name="Heures" fill="#3b82f6" />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* Coût par projet */}
+      <div className="bg-card rounded-lg shadow-sm border border-border p-4">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-2">
+            <Icon name="DollarSign" size={18} className="text-primary" />
+            <h3 className="text-sm font-semibold text-foreground">
+              Coût par projet (€)
+            </h3>
+          </div>
+        </div>
+        {costByProject.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Aucune saisie pour la période sélectionnée.
+          </p>
+        ) : (
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={costByProject} margin={{ left: 0, right: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis
+                dataKey="name"
+                tick={{ fontSize: 11 }}
+                interval={0}
+                angle={-35}
+                textAnchor="end"
+                height={70}
+              />
+              <YAxis
+                tick={{ fontSize: 11 }}
+                tickFormatter={(v) => formatCurrency(v)}
+              />
+              <Tooltip
+                formatter={(value) => formatCurrency(value)}
+                labelFormatter={(label) => `Projet : ${label}`}
+              />
+              <Bar dataKey="cost" name="Coût" fill="#f97316" />
             </BarChart>
           </ResponsiveContainer>
         )}
@@ -175,7 +241,14 @@ const TeamChartsPanel = ({ timeEntries = [] }) => {
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={hoursByCollaborator} margin={{ left: 0, right: 8 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-35} textAnchor="end" height={70} />
+              <XAxis
+                dataKey="name"
+                tick={{ fontSize: 11 }}
+                interval={0}
+                angle={-35}
+                textAnchor="end"
+                height={70}
+              />
               <YAxis tick={{ fontSize: 11 }} />
               <Tooltip />
               <Bar dataKey="hours" name="Heures" fill="#8b5cf6" />
@@ -243,11 +316,16 @@ const TeamChartsPanel = ({ timeEntries = [] }) => {
             </div>
             <div className="mt-4 lg:mt-0 lg:w-56 space-y-2">
               {categoryCostData.map((item, index) => (
-                <div key={item.name} className="flex items-center justify-between text-xs">
+                <div
+                  key={item.name}
+                  className="flex items-center justify-between text-xs"
+                >
                   <div className="flex items-center space-x-2">
                     <span
                       className="inline-block w-3 h-3 rounded-sm"
-                      style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                      style={{
+                        backgroundColor: COLORS[index % COLORS.length],
+                      }}
                     />
                     <span className="text-foreground">{item.name}</span>
                   </div>
