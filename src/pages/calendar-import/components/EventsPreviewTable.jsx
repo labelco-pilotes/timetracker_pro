@@ -2,20 +2,24 @@ import React from 'react';
 import Icon from '../../../components/AppIcon';
 import { Checkbox } from '../../../components/ui/Checkbox';
 
-const EventsPreviewTable = ({ 
-  events, 
-  selectedEvents, 
-  onToggleEvent, 
+const EventsPreviewTable = ({
+  events,
+  selectedEvents,
+  onToggleEvent,
   onToggleAll,
   onUpdateComment,
-  onUpdateDuration
+  onUpdateDuration,
+  projects = [],
+  categories = [],
+  onUpdateProject,
+  onUpdateCategory,
 }) => {
   const formatDate = (dateString) => {
     const date = new Date(dateString);
-    return date?.toLocaleDateString('fr-FR', { 
-      day: '2-digit', 
-      month: '2-digit', 
-      year: 'numeric' 
+    return date?.toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
     });
   };
 
@@ -30,7 +34,8 @@ const EventsPreviewTable = ({
           <span>Aperçu des événements</span>
         </h3>
         <p className="text-sm text-muted-foreground mt-1">
-          Sélectionnez les événements à importer et modifiez les commentaires si nécessaire
+          Sélectionnez les événements à importer, ajustez la durée et associez un projet / une
+          catégorie si besoin.
         </p>
       </div>
 
@@ -46,64 +51,125 @@ const EventsPreviewTable = ({
                   label=""
                 />
               </th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">
-                Date
-              </th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">
-                Heure
-              </th>
+              <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Date</th>
+              <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Heure</th>
               <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">
                 Durée (h)
+              </th>
+              <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Projet</th>
+              <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">
+                Catégorie
               </th>
               <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">
                 Commentaire
               </th>
             </tr>
           </thead>
+
           <tbody className="divide-y divide-border">
-            {events?.map((event) => (
-              <tr 
-                key={event?.id}
-                className={`hover:bg-muted/30 transition-colors ${
-                  selectedEvents?.has(event?.id) ? 'bg-primary/5' : ''
-                }`}
-              >
-                <td className="px-4 py-3">
-                  <Checkbox
-                    checked={selectedEvents?.has(event?.id)}
-                    onChange={() => onToggleEvent(event?.id)}
-                    label=""
-                  />
-                </td>
-                <td className="px-4 py-3 text-sm text-foreground whitespace-nowrap">
-                  {formatDate(event?.date)}
-                </td>
-                <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
-                  {event?.startTime} – {event?.endTime}
-                </td>
-                <td className="px-4 py-3">
-                  <input
-                    type="number"
-                    step="0.25"
-                    min="0"
-                    value={event?.duration}
-                    onChange={(e) => onUpdateDuration(event?.id, e?.target?.value)}
-                    className="w-20 px-2 py-1 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    disabled={!selectedEvents?.has(event?.id)}
-                  />
-                </td>
-                <td className="px-4 py-3">
-                  <input
-                    type="text"
-                    value={event?.comment}
-                    onChange={(e) => onUpdateComment(event?.id, e?.target?.value)}
-                    className="w-full px-3 py-1.5 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    placeholder="Ajouter un commentaire..."
-                    disabled={!selectedEvents?.has(event?.id)}
-                  />
-                </td>
-              </tr>
-            ))}
+            {events?.map((event) => {
+              const isSelected = selectedEvents?.has(event?.id);
+              const eventProjectId = event?.projetId || '';
+
+              const projectCategories =
+                categories?.filter((cat) =>
+                  eventProjectId
+                    ? String(cat?.projetId) === String(eventProjectId)
+                    : false,
+                ) || [];
+
+              return (
+                <tr key={event?.id} className={!isSelected ? 'opacity-60 bg-muted/10' : ''}>
+                  <td className="px-4 py-3 align-top">
+                    <Checkbox
+                      checked={isSelected}
+                      onChange={() => onToggleEvent(event?.id)}
+                      label=""
+                    />
+                  </td>
+
+                  <td className="px-4 py-3 align-top text-sm text-foreground whitespace-nowrap">
+                    {event?.date ? formatDate(event?.date) : '—'}
+                  </td>
+
+                  <td className="px-4 py-3 align-top text-sm text-muted-foreground whitespace-nowrap">
+                    {event?.startTime && event?.endTime
+                      ? `${event?.startTime} – ${event?.endTime}`
+                      : '—'}
+                  </td>
+
+                  <td className="px-4 py-3 align-top">
+                    <input
+                      type="number"
+                      step="0.25"
+                      min="0"
+                      value={event?.duration ?? ''}
+                      onChange={(e) => onUpdateDuration(event?.id, e?.target?.value)}
+                      className="w-24 px-2 py-1 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      disabled={!isSelected}
+                    />
+                  </td>
+
+                  {/* Projet */}
+                  <td className="px-4 py-3 align-top">
+                    <select
+                      className="w-48 px-2 py-1 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      value={eventProjectId}
+                      onChange={(e) =>
+                        onUpdateProject && onUpdateProject(event?.id, e?.target?.value)
+                      }
+                      disabled={!isSelected}
+                    >
+                      <option value="">— Sélectionner —</option>
+                      {projects?.map((project) => (
+                        <option key={project?.id} value={project?.id}>
+                          {project?.nom}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+
+                  {/* Catégorie */}
+                  <td className="px-4 py-3 align-top">
+                    <select
+                      className="w-48 px-2 py-1 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      value={event?.categorieId || ''}
+                      onChange={(e) =>
+                        onUpdateCategory && onUpdateCategory(event?.id, e?.target?.value)
+                      }
+                      disabled={!isSelected || !eventProjectId}
+                    >
+                      <option value="">
+                        {eventProjectId ? '— Sélectionner —' : 'Choisir un projet d’abord'}
+                      </option>
+                      {projectCategories?.map((cat) => (
+                        <option key={cat?.id} value={cat?.id}>
+                          {cat?.nom}
+                        </option>
+                      ))}
+                    </select>
+                    {isSelected && eventProjectId && projectCategories?.length === 0 && (
+                      <p className="mt-1 text-[11px] text-warning flex items-center space-x-1">
+                        <Icon name="AlertTriangle" size={11} />
+                        <span>Aucune catégorie pour ce projet.</span>
+                      </p>
+                    )}
+                  </td>
+
+                  {/* Commentaire */}
+                  <td className="px-4 py-3 align-top">
+                    <input
+                      type="text"
+                      value={event?.comment || ''}
+                      onChange={(e) => onUpdateComment(event?.id, e?.target?.value)}
+                      className="w-full px-3 py-1.5 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      placeholder="Ajouter un commentaire..."
+                      disabled={!isSelected}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -112,7 +178,9 @@ const EventsPreviewTable = ({
         <div className="p-8 text-center text-muted-foreground">
           <Icon name="Calendar" size={48} className="mx-auto mb-3 opacity-50" />
           <p>Aucun événement à afficher</p>
-          <p className="text-sm mt-1">Chargez d'abord les événements depuis votre calendrier</p>
+          <p className="text-sm mt-1">
+            Chargez d&apos;abord les événements depuis votre calendrier
+          </p>
         </div>
       )}
     </div>
