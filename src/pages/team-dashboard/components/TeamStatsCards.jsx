@@ -1,119 +1,122 @@
 import React, { useMemo } from 'react';
-import { Clock, TrendingUp, Users, DollarSign, TrendingDown } from 'lucide-react';
+import { Clock, Users, DollarSign, FolderKanban } from 'lucide-react';
 
+/**
+ * Cartes de stats globales sur la période filtrée
+ */
 const TeamStatsCards = ({ timeEntries = [] }) => {
   const stats = useMemo(() => {
-    // Calculate total hours
-    const totalHeures = timeEntries?.reduce((sum, entry) => sum + (entry?.dureeHeures || 0), 0);
-    
-    // Calculate total cost
-    const totalCout = timeEntries?.reduce((sum, entry) => {
-      const tauxHoraire = entry?.collaborateur?.tauxHoraire || 0;
-      return sum + ((entry?.dureeHeures || 0) * tauxHoraire);
+    const totalHours = timeEntries.reduce(
+      (sum, e) => sum + (e?.dureeHeures || 0),
+      0
+    );
+
+    const totalCost = timeEntries.reduce((sum, e) => {
+      const rate = e?.collaborateur?.tauxHoraire || 0;
+      return sum + (e?.dureeHeures || 0) * rate;
     }, 0);
 
-    // Calculate unique collaborators with at least one entry
-    const uniqueCollaborateurs = new Set(
+    const collaborators = new Set(
       timeEntries
-        .filter(entry => entry.collaborateurId)
-        .map(entry => entry.collaborateurId)
+        .filter((e) => e?.collaborateurId)
+        .map((e) => e.collaborateurId)
     );
-    const nombreCollaborateurs = uniqueCollaborateurs?.size;
-
-    // Calculate average cost per collaborator
-    const coutMoyenParCollaborateur = nombreCollaborateurs > 0 
-      ? totalCout / nombreCollaborateurs 
-      : 0;
-
-    // Calculate unique projects
-    const uniqueProjets = new Set(
+    const projects = new Set(
       timeEntries
-        .filter(entry => entry.projetId)
-        .map(entry => entry.projetId)
+        .filter((e) => e?.projetId)
+        .map((e) => e.projetId)
     );
 
     return {
-      totalHeures: totalHeures?.toFixed(1),
-      totalCout: totalCout?.toFixed(2),
-      coutMoyenParCollaborateur: coutMoyenParCollaborateur?.toFixed(2),
-      nombreCollaborateurs,
-      nombreProjets: uniqueProjets?.size
+      totalHours,
+      totalCost,
+      collaboratorCount: collaborators.size,
+      projectCount: projects.size,
     };
   }, [timeEntries]);
 
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('fr-FR', {
+  const formatHours = (value) => `${(value || 0).toFixed(1)} h`;
+
+  const formatCurrency = (value) =>
+    new Intl.NumberFormat('fr-FR', {
       style: 'currency',
       currency: 'EUR',
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })?.format(value);
-  };
+      maximumFractionDigits: 2,
+    }).format(value || 0);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-      {/* Total Hours Card */}
-      <div className="bg-card rounded-lg shadow-sm border border-border p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="p-2 bg-primary/10 rounded-lg">
-            <Clock className="h-6 w-6 text-primary" />
-          </div>
-          <TrendingUp className="h-4 w-4 text-green-500" />
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Heures totales */}
+      <div className="bg-card rounded-lg shadow-sm border border-border p-4">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-medium uppercase text-muted-foreground">
+            Heures totales
+          </span>
+          <span className="p-2 rounded-full bg-primary/10 text-primary">
+            <Clock size={18} />
+          </span>
         </div>
-        <div>
-          <p className="text-sm text-muted-foreground mb-1">Total heures</p>
-          <p className="text-2xl font-bold text-foreground">{stats?.totalHeures}h</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            {stats?.nombreProjets} projets actifs
-          </p>
+        <div className="text-2xl font-semibold text-foreground">
+          {formatHours(stats.totalHours)}
         </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          Somme des heures sur la période sélectionnée
+        </p>
       </div>
-      {/* Total Cost Card */}
-      <div className="bg-card rounded-lg shadow-sm border border-border p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="p-2 bg-green-500/10 rounded-lg">
-            <DollarSign className="h-6 w-6 text-green-500" />
-          </div>
-          <TrendingUp className="h-4 w-4 text-green-500" />
+
+      {/* Coût total estimé */}
+      <div className="bg-card rounded-lg shadow-sm border border-border p-4">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-medium uppercase text-muted-foreground">
+            Coût estimé
+          </span>
+          <span className="p-2 rounded-full bg-emerald-50 text-emerald-600">
+            <DollarSign size={18} />
+          </span>
         </div>
-        <div>
-          <p className="text-sm text-muted-foreground mb-1">Coût total sur la période</p>
-          <p className="text-2xl font-bold text-foreground">{formatCurrency(stats?.totalCout)}</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Devise : Euro (€)
-          </p>
+        <div className="text-2xl font-semibold text-foreground">
+          {formatCurrency(stats.totalCost)}
         </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          Basé sur les taux horaires des collaborateurs
+        </p>
       </div>
-      {/* Average Cost per Collaborator Card */}
-      <div className="bg-card rounded-lg shadow-sm border border-border p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="p-2 bg-blue-500/10 rounded-lg">
-            <Users className="h-6 w-6 text-blue-500" />
-          </div>
-          <TrendingDown className="h-4 w-4 text-blue-500" />
+
+      {/* Collaborateurs actifs */}
+      <div className="bg-card rounded-lg shadow-sm border border-border p-4">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-medium uppercase text-muted-foreground">
+            Collaborateurs actifs
+          </span>
+          <span className="p-2 rounded-full bg-blue-50 text-blue-600">
+            <Users size={18} />
+          </span>
         </div>
-        <div>
-          <p className="text-sm text-muted-foreground mb-1">Coût moyen par collaborateur</p>
-          <p className="text-2xl font-bold text-foreground">{formatCurrency(stats?.coutMoyenParCollaborateur)}</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            {stats?.nombreCollaborateurs} collaborateurs actifs
-          </p>
+        <div className="text-2xl font-semibold text-foreground">
+          {stats.collaboratorCount}
         </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          Avec au moins une saisie sur la période
+        </p>
       </div>
-      {/* Team Members Card */}
-      <div className="bg-card rounded-lg shadow-sm border border-border p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="p-2 bg-purple-500/10 rounded-lg">
-            <Users className="h-6 w-6 text-purple-500" />
-          </div>
+
+      {/* Projets concernés */}
+      <div className="bg-card rounded-lg shadow-sm border border-border p-4">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-medium uppercase text-muted-foreground">
+            Projets concernés
+          </span>
+          <span className="p-2 rounded-full bg-violet-50 text-violet-600">
+            <FolderKanban size={18} />
+          </span>
         </div>
-        <div>
-          <p className="text-sm text-muted-foreground mb-1">Équipe active</p>
-          <p className="text-2xl font-bold text-foreground">{stats?.nombreCollaborateurs}</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Membres avec saisies
-          </p>
+        <div className="text-2xl font-semibold text-foreground">
+          {stats.projectCount}
         </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          Projets ayant au moins une saisie sur la période
+        </p>
       </div>
     </div>
   );
