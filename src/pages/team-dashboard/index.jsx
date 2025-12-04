@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 
 import { useAuth } from '../../contexts/AuthContext';
 import NavigationHeader from '../navigation-header';
@@ -9,6 +9,12 @@ import TeamTimeEntriesTable from './components/TeamTimeEntriesTable';
 import ExportControls from './components/ExportControls';
 import { saisieTempsService } from '../../services/saisieTempsService';
 
+/**
+ * Tableau de bord équipe
+ * - charge toutes les saisies de temps visibles pour l'admin
+ * - applique les filtres côté frontend (dates, projet, collaborateur, catégorie, recherche)
+ * - passe les entrées filtrées aux cartes, graphiques, tableau et export
+ */
 const TeamDashboard = () => {
   const { userProfile, loading: authLoading } = useAuth();
 
@@ -16,63 +22,101 @@ const TeamDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Filtres utilisés par le tableau + export
   const [filters, setFilters] = useState({
-    dateRange: 'current-week',
     startDate: '',
     endDate: '',
-    collaborator: '',
-    project: '',
-    category: '',
+    collaboratorId: '',
+    projectId: '',
+    categoryId: '',
     searchTerm: '',
   });
 
-  // Charger les vraies données depuis Supabase
+  // Chargement initial des données
   useEffect(() => {
-    if (authLoading) return;
+    const load = async () => {
+      if (authLoading) return;
+      if (!userProfile || userProfile.role !== 'admin') {
+        setError("Vous n’avez pas les droits pour accéder à cette page.");
+        setLoading(false);
+        return;
+      }
 
-    // Sécurité : réservé aux admins
-    if (!userProfile || userProfile?.role !== 'admin') {
-      setError("Vous n’avez pas les droits pour accéder à ce tableau de bord.");
-      setLoading(false);
-      return;
-    }
-
-    const loadData = async () => {
       try {
         setLoading(true);
         setError('');
-
-        // Pour l’instant : on récupère toutes les saisies
-        // (les filtres sont appliqués côté front dans les composants)
         const entries = await saisieTempsService.getAll({});
         setTimeEntries(entries || []);
-      } catch (err) {
-        console.error('Erreur chargement saisies équipe', err);
-        setError(
-          "Erreur lors du chargement des saisies de l’équipe. Merci de réessayer."
-        );
+      } catch (e) {
+        console.error('[TeamDashboard] erreur lors du chargement des saisies', e);
+        setError("Erreur lors du chargement des saisies de l'équipe.");
       } finally {
         setLoading(false);
       }
     };
 
-    loadData();
+    load();
   }, [authLoading, userProfile]);
 
   const handleFiltersChange = (nextFilters) => {
     setFilters(nextFilters);
   };
 
-  // État de chargement auth
-  if (authLoading) {
+  // Application des filtres côté front
+  const filteredEntries = useMemo(() => {
+    return (timeEntries || []).filter((entry) => {
+      if (!entry) return false;
+
+      const entryDate = entry.date ? new Date(entry.date) : null;
+
+      if (filters.startDate) {
+        const start = new Date(filters.startDate);
+        if (!entryDate || entryDate < start) return false;
+      }
+      if (filters.endDate) {
+        const end = new Date(filters.endDate);
+        end.setHours(23, 59, 59, 999);
+        if (!entryDate || entryDate > end) return false;
+      }
+
+      if (filters.collaboratorId) {
+        if (entry.collaborateurId !== filters.collaboratorId) return false;
+      }
+
+      if (filters.projectId) {
+        if (entry.projetId !== filters.projectId) return false;
+      }
+
+      if (filters.categoryId) {
+        if (entry.categorieId !== filters.categoryId) return false;
+      }
+
+      if (filters.searchTerm) {
+        const term = filters.searchTerm.toLowerCase();
+        const text = [
+          entry.commentaire,
+          entry.projet?.nom,
+          entry.categorie?.nom,
+          entry.collaborateur?.nomComplet,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+
+        if (!text.includes(term)) return false;
+      }
+
+      return true;
+    });
+  }, [timeEntries, filters]);
+
+  if (authLoading || loading) {
     return (
       <>
         <NavigationHeader />
         <div className="min-h-screen bg-background p-6">
           <main className="pt-16 flex items-center justify-center">
             <p className="text-sm text-muted-foreground">
-              Chargement de vos informations…
+              Chargement du tableau de bord…
             </p>
           </main>
         </div>
@@ -80,7 +124,6 @@ const TeamDashboard = () => {
     );
   }
 
-  // Erreur / pas admin
   if (error) {
     return (
       <>
@@ -88,7 +131,7 @@ const TeamDashboard = () => {
         <div className="min-h-screen bg-background p-6">
           <main className="pt-16 flex items-center justify-center">
             <div className="max-w-md bg-card border border-border rounded-lg p-6 text-center">
-              <p className="text-sm text-destructive mb-2">{error}</p>
+              <p className="text-sm text-destructive">{error}</p>
             </div>
           </main>
         </div>
@@ -101,39 +144,37 @@ const TeamDashboard = () => {
       <NavigationHeader />
       <div className="min-h-screen bg-background p-6">
         <main className="pt-16">
-          <div className="max-w-7xl mx-auto px-6 py-8">
+          <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
             {/* Header */}
-            <div className="mb-8">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-2xl font-semibold text-foreground">
-                    Tableau de bord équipe
-                  </h1>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Visualisez les heures, les coûts estimés et la répartition par
-                    projet / collaborateur / catégorie à partir des vraies saisies.
-                  </p>
-                </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-semibold text-foreground">
+                  Tableau de bord équipe
+                </h1>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Analyse des heures et des coûts sur la période sélectionnée.
+                </p>
               </div>
             </div>
 
             {/* Filtres + export */}
-            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-4 mb-6">
+            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2.2fr)_minmax(0,1.2fr)] gap-4">
               <TeamFiltersPanel
                 timeEntries={timeEntries}
+                filters={filters}
                 onFiltersChange={handleFiltersChange}
               />
-              <ExportControls timeEntries={timeEntries} filters={filters} />
+              <ExportControls timeEntries={filteredEntries} />
             </div>
 
-            {/* Stats & graphiques (alimentés par les vraies données) */}
-            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.7fr)] gap-6 mb-8">
-              <TeamStatsCards timeEntries={timeEntries} />
-              <TeamChartsPanel timeEntries={timeEntries} />
+            {/* Stats & graphiques */}
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.7fr)] gap-6">
+              <TeamStatsCards timeEntries={filteredEntries} />
+              <TeamChartsPanel timeEntries={filteredEntries} />
             </div>
 
             {/* Tableau détaillé */}
-            <TeamTimeEntriesTable timeEntries={timeEntries} filters={filters} />
+            <TeamTimeEntriesTable timeEntries={filteredEntries} />
           </div>
         </main>
       </div>
