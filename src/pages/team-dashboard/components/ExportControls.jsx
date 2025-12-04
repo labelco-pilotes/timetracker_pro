@@ -1,109 +1,129 @@
 import React, { useState } from 'react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
+import { saisieTempsService } from '../../../services/saisieTempsService';
 
-const ExportControls = ({ timeEntries, filters }) => {
+const ExportControls = ({ timeEntries = [], filters }) => {
   const [isExporting, setIsExporting] = useState(false);
-  const [exportFormat, setExportFormat] = useState('csv');
 
-  const handleExport = async (type) => {
+  // On considère que timeEntries = données déjà filtrées par le tableau de bord
+  const filteredEntries = timeEntries || [];
+
+  const selectedCount = filteredEntries.length;
+
+  const uniqueCollaboratorsCount = new Set(
+    filteredEntries
+      .map((e) => e?.collaborateur?.id || e?.collaborateurId || e?.collaboratorId)
+      .filter(Boolean)
+  ).size;
+
+  const totalHours = filteredEntries.reduce(
+    (sum, e) => sum + (e?.dureeHeures ?? e?.duration ?? 0),
+    0
+  );
+
+  const formatHours = (hours) =>
+    `${(hours || 0).toFixed(2).replace('.', ',')}h`;
+
+  const handleExport = async (mode) => {
     setIsExporting(true);
-    
+
     try {
-      // Filter entries based on current filters
-      let filteredEntries = [...timeEntries];
-      
-      if (filters?.collaborator) {
-        filteredEntries = filteredEntries?.filter(entry => entry?.collaborator === filters?.collaborator);
-      }
-      if (filters?.project) {
-        filteredEntries = filteredEntries?.filter(entry => entry?.project === filters?.project);
-      }
-      if (filters?.category) {
-        filteredEntries = filteredEntries?.filter(entry => entry?.category === filters?.category);
+      let entriesToExport = filteredEntries;
+
+      // Mode "équipe complète" : on recharge toutes les saisies depuis Supabase
+      if (mode === 'full') {
+        const allEntries = await saisieTempsService.getAll();
+        entriesToExport = allEntries || [];
       }
 
-      // Generate CSV content
-      const headers = [
-        'Collaborateur',
-        'Projet', 
-        'Catégorie',
-        'Date',
-        'Durée (heures)',
-        'Commentaires'
-      ];
+      if (!entriesToExport || entriesToExport.length === 0) {
+        alert("Aucune saisie à exporter pour cette sélection.");
+        return;
+      }
 
-      const csvContent = [
-        headers?.join(';'),
-        ...filteredEntries?.map(entry => [
-          entry?.collaborator,
-          entry?.project,
-          entry?.category,
-          new Date(entry.date)?.toLocaleDateString('fr-FR'),
-          entry?.duration?.toFixed(2)?.replace('.', ','),
-          `"${entry?.comments || ''}"`
-        ]?.join(';'))
-      ]?.join('\n');
-
-      // Create and download file
-      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      
-      const now = new Date();
-      const filename = type === 'team' 
-        ? `export-equipe-${now?.toISOString()?.split('T')?.[0]}.csv`
-        : `export-filtre-${now?.toISOString()?.split('T')?.[0]}.csv`;
-      
-      link?.setAttribute('href', url);
-      link?.setAttribute('download', filename);
-      link.style.visibility = 'hidden';
-      document.body?.appendChild(link);
-      link?.click();
-      document.body?.removeChild(link);
-
-      // Simulate export delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      const csv = buildCsv(entriesToExport);
+      triggerDownload(
+        csv,
+        mode === 'full' ? 'export_suivi_temps_equipe' : 'export_suivi_temps_filtre'
+      );
     } catch (error) {
-      console.error('Erreur lors de l\'export:', error);
+      console.error('Erreur lors de l’export CSV:', error);
+      alert(
+        `Erreur lors de l’export: ${error?.message || 'Une erreur est survenue. Veuillez réessayer.'}`
+      );
     } finally {
       setIsExporting(false);
     }
   };
 
-  const getFilteredEntriesCount = () => {
-    let count = timeEntries?.length;
-    
-    if (filters?.collaborator || filters?.project || filters?.category || filters?.searchTerm) {
-      let filtered = [...timeEntries];
-      
-      if (filters?.collaborator) {
-        filtered = filtered?.filter(entry => entry?.collaborator === filters?.collaborator);
-      }
-      if (filters?.project) {
-        filtered = filtered?.filter(entry => entry?.project === filters?.project);
-      }
-      if (filters?.category) {
-        filtered = filtered?.filter(entry => entry?.category === filters?.category);
-      }
-      if (filters?.searchTerm) {
-        filtered = filtered?.filter(entry => 
-          entry?.comments?.toLowerCase()?.includes(filters?.searchTerm?.toLowerCase()) ||
-          entry?.collaborator?.toLowerCase()?.includes(filters?.searchTerm?.toLowerCase()) ||
-          entry?.project?.toLowerCase()?.includes(filters?.searchTerm?.toLowerCase())
-        );
-      }
-      
-      count = filtered?.length;
-    }
-    
-    return count;
+  const buildCsv = (entries) => {
+    const header = [
+      'Date',
+      'Collaborateur',
+      'Projet',
+      'Catégorie',
+      'Durée (heures)',
+      'Commentaire',
+    ];
+
+    const rows = entries.map((e) => {
+      const date = e?.date ? new Date(e.date).toISOString().slice(0, 10) : '';
+
+      const collaborateur =
+        e?.collaborateur?.nomComplet ||
+        e?.collaborateur_nom ||
+        e?.collaborator ||
+        '';
+
+      const projet = e?.projet?.nom || e?.project || '';
+
+      const categorie = e?.categorie?.nom || e?.category || '';
+
+      const duree = String(e?.dureeHeures ?? e?.duration ?? 0).replace('.', ',');
+
+      const commentaire = (e?.commentaire ?? e?.comment ?? '')
+        .replace(/\r\n|\n|\r/g, ' ')
+        .trim();
+
+      return [date, collaborateur, projet, categorie, duree, commentaire];
+    });
+
+    const csvLines = [header, ...rows].map((row) =>
+      row
+        .map((field) => {
+          const f = field ?? '';
+          if (/[\";,\n]/.test(f)) {
+            return `"${f.replace(/"/g, '""')}"`;
+          }
+          return f;
+        })
+        .join(';')
+    );
+
+    return csvLines.join('\n');
+  };
+
+  const triggerDownload = (csv, baseName) => {
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+
+    a.href = url;
+    a.download = `${baseName}_${dateStr}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   return (
     <div className="bg-card border border-border rounded-lg p-4 card-shadow">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        {/* Titre + description */}
         <div className="flex items-center space-x-3">
           <Icon name="Download" size={20} className="text-muted-foreground" />
           <div>
@@ -114,10 +134,11 @@ const ExportControls = ({ timeEntries, filters }) => {
           </div>
         </div>
 
-        <div className="flex items-center space-x-3">
-          <div className="text-right">
+        {/* Résumé sélection + boutons */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="text-right sm:text-left">
             <p className="text-sm font-medium text-foreground">
-              {getFilteredEntriesCount()} entrées sélectionnées
+              {selectedCount} entrées sélectionnées
             </p>
             <p className="text-xs text-muted-foreground">
               Selon les filtres appliqués
@@ -128,67 +149,74 @@ const ExportControls = ({ timeEntries, filters }) => {
             <Button
               variant="outline"
               size="sm"
+              disabled={isExporting || selectedCount === 0}
               onClick={() => handleExport('filtered')}
-              disabled={isExporting || getFilteredEntriesCount() === 0}
-              loading={isExporting}
-              iconName="Filter"
-              iconPosition="left"
             >
+              <Icon name="Filter" size={16} className="mr-1" />
               Export filtré
             </Button>
-
             <Button
               variant="default"
               size="sm"
-              onClick={() => handleExport('team')}
               disabled={isExporting}
-              loading={isExporting}
-              iconName="Users"
-              iconPosition="left"
+              onClick={() => handleExport('full')}
             >
+              <Icon name="Users" size={16} className="mr-1" />
               Export équipe complète
             </Button>
           </div>
         </div>
       </div>
-      {/* Export Statistics */}
-      <div className="mt-4 pt-4 border-t border-border">
+
+      {/* Stats sous les boutons */}
+      <div className="mt-4 border-t border-border pt-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="text-center">
-            <p className="text-2xl font-bold text-primary">
-              {timeEntries?.length}
-            </p>
-            <p className="text-sm text-muted-foreground">Total des entrées</p>
+          <div className="flex flex-col">
+            <span className="text-xs text-muted-foreground uppercase tracking-wide">
+              Total des entrées
+            </span>
+            <span className="text-lg font-semibold text-foreground">
+              {selectedCount}
+            </span>
           </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-accent">
-              {[...new Set(timeEntries.map(entry => entry.collaborator))]?.length}
-            </p>
-            <p className="text-sm text-muted-foreground">Collaborateurs actifs</p>
+
+          <div className="flex flex-col">
+            <span className="text-xs text-muted-foreground uppercase tracking-wide">
+              Collaborateurs actifs
+            </span>
+            <span className="text-lg font-semibold text-foreground">
+              {uniqueCollaboratorsCount}
+            </span>
           </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-success">
-              {timeEntries?.reduce((sum, entry) => sum + entry?.duration, 0)?.toFixed(1)}h
-            </p>
-            <p className="text-sm text-muted-foreground">Heures totales</p>
+
+          <div className="flex flex-col">
+            <span className="text-xs text-muted-foreground uppercase tracking-wide">
+              Heures totales
+            </span>
+            <span className="text-lg font-semibold text-foreground">
+              {formatHours(totalHours)}
+            </span>
           </div>
         </div>
-      </div>
-      {/* Export History */}
-      <div className="mt-4 pt-4 border-t border-border">
-        <h4 className="text-sm font-medium text-foreground mb-2">Derniers exports</h4>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Export équipe - 15/11/2024</span>
-            <span className="text-success">Réussi (247 entrées)</span>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Export filtré - 14/11/2024</span>
-            <span className="text-success">Réussi (89 entrées)</span>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Export équipe - 08/11/2024</span>
-            <span className="text-success">Réussi (312 entrées)</span>
+
+        {/* Bloc historique statique (optionnel) */}
+        <div className="mt-4">
+          <p className="text-xs font-medium text-muted-foreground mb-1">
+            Derniers exports (exemple)
+          </p>
+          <div className="space-y-1 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Export équipe - 15/11/2024</span>
+              <span className="text-emerald-600">Réussi (247 entrées)</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Export filtré - 14/11/2024</span>
+              <span className="text-emerald-600">Réussi (89 entrées)</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Export équipe - 08/11/2024</span>
+              <span className="text-emerald-600">Réussi (312 entrées)</span>
+            </div>
           </div>
         </div>
       </div>
