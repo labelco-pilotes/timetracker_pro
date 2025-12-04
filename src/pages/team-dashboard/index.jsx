@@ -25,6 +25,7 @@ const COLORS = [
   '#14b8a6',
 ];
 
+
 const TeamChartsPanel = ({ timeEntries = [] }) => {
   const [selectedProjectId, setSelectedProjectId] = useState('');
 
