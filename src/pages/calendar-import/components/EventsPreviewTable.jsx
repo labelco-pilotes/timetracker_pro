@@ -123,7 +123,6 @@ const EventsPreviewTable = ({
                       onChange={(e) =>
                         onUpdateProject && onUpdateProject(event?.id, e?.target?.value)
                       }
-                      disabled={!isSelected}
                     >
                       <option value="">— Sélectionner —</option>
                       {projects?.map((project) => (
@@ -144,30 +143,22 @@ const EventsPreviewTable = ({
                       }
                       disabled={!isSelected || !eventProjectId}
                     >
-                      <option value="">
-                        {eventProjectId ? '— Sélectionner —' : 'Choisir un projet d’abord'}
-                      </option>
-                      {projectCategories?.map((cat) => (
-                        <option key={cat?.id} value={cat?.id}>
-                          {cat?.nom}
+                      <option value="">— Choisir —</option>
+                      {projectCategories?.map((category) => (
+                        <option key={category?.id} value={category?.id}>
+                          {category?.nom}
                         </option>
                       ))}
                     </select>
-                    {isSelected && eventProjectId && projectCategories?.length === 0 && (
-                      <p className="mt-1 text-[11px] text-warning flex items-center space-x-1">
-                        <Icon name="AlertTriangle" size={11} />
-                        <span>Aucune catégorie pour ce projet.</span>
-                      </p>
-                    )}
                   </td>
 
                   {/* Commentaire */}
                   <td className="px-4 py-3 align-top">
                     <input
                       type="text"
-                      value={event?.comment}
+                      value={event?.comment || ''}
                       onChange={(e) => onUpdateComment(event?.id, e?.target?.value)}
-                      className="w-full px-3 py-1.5 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      className="w-full px-2 py-1 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                       placeholder="Ajouter un commentaire..."
                       disabled={!isSelected}
                     />
@@ -191,4 +182,3 @@ const EventsPreviewTable = ({
 };
 
 export default EventsPreviewTable;
-
