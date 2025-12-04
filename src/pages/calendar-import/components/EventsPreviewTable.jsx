@@ -15,19 +15,25 @@ const EventsPreviewTable = ({
   onUpdateCategory,
 }) => {
   const formatDate = (dateString) => {
+    if (!dateString) return '—';
     const date = new Date(dateString);
-    return date?.toLocaleDateString('fr-FR', {
+    if (Number.isNaN(date.getTime())) return '—';
+
+    return date.toLocaleDateString('fr-FR', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
     });
   };
 
-  const allSelected = events?.length > 0 && selectedEvents?.size === events?.length;
-  const someSelected = selectedEvents?.size > 0 && !allSelected;
+  const allSelected =
+    events?.length > 0 && selectedEvents?.size === events?.length;
+  const someSelected =
+    selectedEvents?.size > 0 && !allSelected;
 
   return (
     <div className="bg-card rounded-lg border border-border card-shadow overflow-hidden">
+      {/* Header */}
       <div className="p-4 border-b border-border bg-muted/30">
         <h3 className="text-lg font-semibold text-foreground flex items-center space-x-2">
           <Icon name="List" size={20} />
@@ -39,6 +45,7 @@ const EventsPreviewTable = ({
         </p>
       </div>
 
+      {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead className="bg-muted/50 border-b border-border">
@@ -71,14 +78,18 @@ const EventsPreviewTable = ({
               </th>
             </tr>
           </thead>
+
           <tbody className="divide-y divide-border">
             {events?.map((event) => {
               const isSelected = selectedEvents?.has(event?.id);
               const eventProjectId = event?.projetId || '';
 
+              // Catégories filtrées par projet
               const projectCategories =
                 categories?.filter((cat) =>
-                  eventProjectId ? String(cat?.projetId) === String(eventProjectId) : false
+                  eventProjectId
+                    ? String(cat?.projetId) === String(eventProjectId)
+                    : false
                 ) || [];
 
               return (
@@ -88,6 +99,7 @@ const EventsPreviewTable = ({
                     isSelected ? 'bg-primary/5' : ''
                   }`}
                 >
+                  {/* Checkbox ligne */}
                   <td className="px-4 py-3 align-top">
                     <Checkbox
                       checked={isSelected}
@@ -95,23 +107,31 @@ const EventsPreviewTable = ({
                       label=""
                     />
                   </td>
+
+                  {/* Date */}
                   <td className="px-4 py-3 align-top text-sm text-foreground whitespace-nowrap">
-                    {event?.date ? formatDate(event?.date) : '—'}
+                    {formatDate(event?.date)}
                   </td>
+
+                  {/* Heure */}
                   <td className="px-4 py-3 align-top text-sm text-muted-foreground whitespace-nowrap">
                     {event?.startTime && event?.endTime
                       ? `${event?.startTime} – ${event?.endTime}`
                       : '—'}
                   </td>
+
+                  {/* Durée */}
                   <td className="px-4 py-3 align-top">
                     <input
                       type="number"
                       step="0.25"
                       min="0"
-                      value={event?.duration}
-                      onChange={(e) => onUpdateDuration(event?.id, e?.target?.value)}
+                      value={event?.duration ?? ''}
+                      onChange={(e) =>
+                        onUpdateDuration &&
+                        onUpdateDuration(event?.id, e.target.value)
+                      }
                       className="w-20 px-2 py-1 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                      disabled={!isSelected}
                     />
                   </td>
 
@@ -121,7 +141,8 @@ const EventsPreviewTable = ({
                       className="w-48 px-2 py-1 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                       value={eventProjectId}
                       onChange={(e) =>
-                        onUpdateProject && onUpdateProject(event?.id, e?.target?.value)
+                        onUpdateProject &&
+                        onUpdateProject(event?.id, e.target.value)
                       }
                     >
                       <option value="">— Sélectionner —</option>
@@ -133,15 +154,15 @@ const EventsPreviewTable = ({
                     </select>
                   </td>
 
-                  {/* Catégorie (filtrée par projet) */}
+                  {/* Catégorie */}
                   <td className="px-4 py-3 align-top">
                     <select
                       className="w-48 px-2 py-1 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                       value={event?.categorieId || ''}
                       onChange={(e) =>
-                        onUpdateCategory && onUpdateCategory(event?.id, e?.target?.value)
+                        onUpdateCategory &&
+                        onUpdateCategory(event?.id, e.target.value)
                       }
-                      disabled={!isSelected || !eventProjectId}
                     >
                       <option value="">— Choisir —</option>
                       {projectCategories?.map((category) => (
@@ -157,10 +178,12 @@ const EventsPreviewTable = ({
                     <input
                       type="text"
                       value={event?.comment || ''}
-                      onChange={(e) => onUpdateComment(event?.id, e?.target?.value)}
+                      onChange={(e) =>
+                        onUpdateComment &&
+                        onUpdateComment(event?.id, e.target.value)
+                      }
                       className="w-full px-2 py-1 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                       placeholder="Ajouter un commentaire..."
-                      disabled={!isSelected}
                     />
                   </td>
                 </tr>
@@ -170,11 +193,14 @@ const EventsPreviewTable = ({
         </table>
       </div>
 
-      {events?.length === 0 && (
+      {/* Aucun événement */}
+      {(!events || events.length === 0) && (
         <div className="p-8 text-center text-muted-foreground">
           <Icon name="Calendar" size={48} className="mx-auto mb-3 opacity-50" />
           <p>Aucun événement à afficher</p>
-          <p className="text-sm mt-1">Chargez d'abord les événements depuis votre calendrier</p>
+          <p className="text-sm mt-1">
+            Chargez d&apos;abord les événements depuis votre calendrier
+          </p>
         </div>
       )}
     </div>
