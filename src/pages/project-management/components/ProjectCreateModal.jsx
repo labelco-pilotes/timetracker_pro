@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
@@ -6,207 +6,144 @@ import Select from '../../../components/ui/Select';
 
 const ProjectCreateModal = ({ isOpen, onClose, onSave }) => {
   const [formData, setFormData] = useState({
-    name: '',
-    client: '',
-    referent: '',
+    nom: '',
+    description: '',
     status: 'active',
-    description: ''
   });
 
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const referentOptions = [
-    { value: 'Marie Dubois', label: 'Marie Dubois' },
-    { value: 'Jean Martin', label: 'Jean Martin' },
-    { value: 'Sophie Laurent', label: 'Sophie Laurent' },
-    { value: 'Pierre Durand', label: 'Pierre Durand' },
-    { value: 'Emma Moreau', label: 'Emma Moreau' }
-  ];
-
-  const statusOptions = [
-    { value: 'active', label: 'Actif' },
-    { value: 'inactive', label: 'Inactif' }
-  ];
-
-  const handleInputChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-    
-    // Clear error when user starts typing
-    if (errors?.[field]) {
-      setErrors(prev => ({
-        ...prev,
-        [field]: ''
-      }));
+  useEffect(() => {
+    if (isOpen) {
+      setFormData({
+        nom: '',
+        description: '',
+        status: 'active',
+      });
+      setErrors({});
+      setIsSubmitting(false);
     }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleChange = (field, value) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+    setErrors((prev) => ({
+      ...prev,
+      [field]: undefined,
+    }));
   };
 
-  const validateForm = () => {
+  const validate = () => {
     const newErrors = {};
-
-    if (!formData?.name?.trim()) {
-      newErrors.name = 'Le nom du projet est obligatoire';
+    if (!formData.nom?.trim()) {
+      newErrors.nom = 'Le nom du projet est obligatoire.';
     }
-
-    if (!formData?.client?.trim()) {
-      newErrors.client = 'Le client est obligatoire';
-    }
-
-    if (!formData?.referent) {
-      newErrors.referent = 'Le référent est obligatoire';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors)?.length === 0;
+    return newErrors;
   };
 
   const handleSubmit = async (e) => {
-    e?.preventDefault();
-    
-    if (!validateForm()) {
+    e.preventDefault();
+    const validationErrors = validate();
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
       return;
     }
 
-    setIsSubmitting(true);
-
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const newProject = {
-        id: Date.now(),
-        ...formData,
-        teamCount: 0,
-        totalHours: 0,
-        createdAt: new Date()?.toISOString()
-      };
-
-      onSave(newProject);
-      handleClose();
-    } catch (error) {
-      console.error('Error creating project:', error);
+      setIsSubmitting(true);
+      await onSave?.({
+        nom: formData.nom.trim(),
+        description: formData.description?.trim() || null,
+        status: formData.status,
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleClose = () => {
-    setFormData({
-      name: '',
-      client: '',
-      referent: '',
-      status: 'active',
-      description: ''
-    });
-    setErrors({});
-    setIsSubmitting(false);
-    onClose();
-  };
-
-  if (!isOpen) {
-    return null;
-  }
-
   return (
-    <div className="fixed inset-0 z-200 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/50" 
-        onClick={handleClose}
+      <div
+        className="absolute inset-0 bg-black/40"
+        onClick={onClose}
       />
-      {/* Modal */}
-      <div className="relative bg-card rounded-lg border border-border modal-shadow w-full max-w-md mx-4">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-border">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center">
-              <Icon name="Plus" size={16} color="white" />
-            </div>
+
+      {/* Dialog */}
+      <div className="relative z-10 w-full max-w-lg bg-card rounded-xl shadow-lg border border-border p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-2">
+            <Icon name="FolderKanban" size={20} className="text-primary" />
             <h2 className="text-lg font-semibold text-foreground">
               Nouveau projet
             </h2>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleClose}
-            disabled={isSubmitting}
+          <button
+            type="button"
+            className="p-1 rounded-md hover:bg-muted text-muted-foreground"
+            onClick={onClose}
           >
             <Icon name="X" size={16} />
-          </Button>
+          </button>
         </div>
 
-        {/* Content */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <Input
-            label="Nom du projet"
-            type="text"
-            value={formData?.name}
-            onChange={(e) => handleInputChange('name', e?.target?.value)}
-            error={errors?.name}
-            required
-            placeholder="Entrez le nom du projet"
-            disabled={isSubmitting}
-          />
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <Input
+              label="Nom du projet"
+              placeholder="Ex : Refonte site e-commerce"
+              value={formData.nom}
+              onChange={(e) => handleChange('nom', e.target.value)}
+              error={errors.nom}
+              required
+            />
+          </div>
 
-          <Input
-            label="Client"
-            type="text"
-            value={formData?.client}
-            onChange={(e) => handleInputChange('client', e?.target?.value)}
-            error={errors?.client}
-            required
-            placeholder="Nom du client"
-            disabled={isSubmitting}
-          />
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">
+              Description (facultatif)
+            </label>
+            <textarea
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              rows={3}
+              placeholder="Contexte, objectifs, type de missions…"
+              value={formData.description}
+              onChange={(e) => handleChange('description', e.target.value)}
+            />
+          </div>
 
-          <Select
-            label="Référent du projet"
-            options={referentOptions}
-            value={formData?.referent}
-            onChange={(value) => handleInputChange('referent', value)}
-            error={errors?.referent}
-            required
-            placeholder="Sélectionner un référent"
-            disabled={isSubmitting}
-          />
+          <div>
+            <Select
+              label="Statut"
+              value={formData.status}
+              onChange={(value) => handleChange('status', value)}
+              options={[
+                { value: 'active', label: 'Actif' },
+                { value: 'inactive', label: 'Inactif' },
+              ]}
+            />
+          </div>
 
-          <Select
-            label="Statut initial"
-            options={statusOptions}
-            value={formData?.status}
-            onChange={(value) => handleInputChange('status', value)}
-            disabled={isSubmitting}
-          />
-
-          <Input
-            label="Description (optionnel)"
-            type="text"
-            value={formData?.description}
-            onChange={(e) => handleInputChange('description', e?.target?.value)}
-            placeholder="Description du projet"
-            disabled={isSubmitting}
-          />
-
-          {/* Actions */}
-          <div className="flex items-center justify-end space-x-3 pt-4">
+          <div className="flex items-center justify-end space-x-2 pt-2">
             <Button
               type="button"
-              variant="outline"
-              onClick={handleClose}
-              disabled={isSubmitting}
+              variant="ghost"
+              onClick={onClose}
             >
               Annuler
             </Button>
             <Button
               type="submit"
-              variant="default"
-              loading={isSubmitting}
+              variant="primary"
               iconName="Plus"
               iconPosition="left"
+              loading={isSubmitting}
             >
               Créer le projet
             </Button>
