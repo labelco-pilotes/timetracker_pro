@@ -11,101 +11,88 @@ import { saisieTempsService } from '../../services/saisieTempsService';
 
 const TeamDashboard = () => {
   const { userProfile, loading: authLoading } = useAuth();
+
   const [timeEntries, setTimeEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Filtres utilisés par le tableau + export
   const [filters, setFilters] = useState({
     dateRange: 'current-week',
     startDate: '',
     endDate: '',
-    collaborateur: '',
+    collaborator: '',
     project: '',
     category: '',
-    searchTerm: ''
+    searchTerm: '',
   });
 
-  // Load time entries from Supabase
+  // Charger les vraies données depuis Supabase
   useEffect(() => {
-    if (!authLoading) {
-      loadTimeEntries();
-    }
-  }, [authLoading, filters]);
+    if (authLoading) return;
 
-  const loadTimeEntries = async () => {
-    try {
-      setLoading(true);
-      const filterParams = {};
-      
-      if (filters?.startDate) filterParams.startDate = filters?.startDate;
-      if (filters?.endDate) filterParams.endDate = filters?.endDate;
-      if (filters?.collaborateur) filterParams.collaborateurId = filters?.collaborateur;
-      if (filters?.project) filterParams.projetId = filters?.project;
-      if (filters?.category) filterParams.categorieId = filters?.category;
-
-      const data = await saisieTempsService?.getAll(filterParams);
-      setTimeEntries(data);
-      setError('');
-    } catch (err) {
-      console.error('Error loading time entries:', err);
-      setError(err?.message || 'Erreur lors du chargement des saisies');
-    } finally {
+    // Sécurité : réservé aux admins
+    if (!userProfile || userProfile?.role !== 'admin') {
+      setError("Vous n’avez pas les droits pour accéder à ce tableau de bord.");
       setLoading(false);
+      return;
     }
+
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        setError('');
+
+        // Pour l’instant : on récupère toutes les saisies
+        // (les filtres sont appliqués côté front dans les composants)
+        const entries = await saisieTempsService.getAll({});
+        setTimeEntries(entries || []);
+      } catch (err) {
+        console.error('Erreur chargement saisies équipe', err);
+        setError(
+          "Erreur lors du chargement des saisies de l’équipe. Merci de réessayer."
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, [authLoading, userProfile]);
+
+  const handleFiltersChange = (nextFilters) => {
+    setFilters(nextFilters);
   };
 
-  const handleFiltersChange = (newFilters) => {
-    setFilters(newFilters);
-  };
-
-  // Check user role
-  const isAdmin = userProfile?.role === 'admin';
-
-  // Redirect non-admin users
-  useEffect(() => {
-    if (!authLoading && !isAdmin) {
-      window.location.href = '/personal-time-entries';
-    }
-  }, [isAdmin, authLoading]);
-
-  if (authLoading || loading) {
+  // État de chargement auth
+  if (authLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Chargement...</p>
+      <>
+        <NavigationHeader />
+        <div className="min-h-screen bg-background p-6">
+          <main className="pt-16 flex items-center justify-center">
+            <p className="text-sm text-muted-foreground">
+              Chargement de vos informations…
+            </p>
+          </main>
         </div>
-      </div>
+      </>
     );
   }
 
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-foreground mb-2">Accès non autorisé</h2>
-          <p className="text-muted-foreground">Vous n'avez pas les permissions nécessaires pour accéder à cette page.</p>
-        </div>
-      </div>
-    );
-  }
-
+  // Erreur / pas admin
   if (error) {
     return (
-      <div className="min-h-screen bg-background">
+      <>
         <NavigationHeader />
-        <div className="pt-16 flex items-center justify-center min-h-[calc(100vh-4rem)]">
-          <div className="text-center">
-            <h2 className="text-xl font-semibold text-destructive mb-2">Erreur</h2>
-            <p className="text-muted-foreground mb-4">{error}</p>
-            <button 
-              onClick={loadTimeEntries}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90"
-            >
-              Réessayer
-            </button>
-          </div>
+        <div className="min-h-screen bg-background p-6">
+          <main className="pt-16 flex items-center justify-center">
+            <div className="max-w-md bg-card border border-border rounded-lg p-6 text-center">
+              <p className="text-sm text-destructive mb-2">{error}</p>
+            </div>
+          </main>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -115,53 +102,38 @@ const TeamDashboard = () => {
       <div className="min-h-screen bg-background p-6">
         <main className="pt-16">
           <div className="max-w-7xl mx-auto px-6 py-8">
-            {/* Page Header */}
+            {/* Header */}
             <div className="mb-8">
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-3xl font-bold text-foreground mb-2">
+                  <h1 className="text-2xl font-semibold text-foreground">
                     Tableau de bord équipe
                   </h1>
-                  <p className="text-muted-foreground">
-                    Vue d'ensemble des performances et activités de l'équipe avec suivi des coûts
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Visualisez les heures, les coûts estimés et la répartition par
+                    projet / collaborateur / catégorie à partir des vraies saisies.
                   </p>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-primary text-primary-foreground">
-                    Administrateur
-                  </span>
-                  <span className="text-sm text-muted-foreground">
-                    Dernière mise à jour: {new Date()?.toLocaleString('fr-FR')}
-                  </span>
                 </div>
               </div>
             </div>
 
-            {/* Statistics Cards */}
-            <TeamStatsCards timeEntries={timeEntries} />
-
-            {/* Charts Panel */}
-            <TeamChartsPanel timeEntries={timeEntries} />
-
-            {/* Filters Panel */}
-            <TeamFiltersPanel 
-              onFiltersChange={handleFiltersChange}
-              timeEntries={timeEntries}
-            />
-
-            {/* Export Controls */}
-            <div className="mb-6">
-              <ExportControls 
+            {/* Filtres + export */}
+            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-4 mb-6">
+              <TeamFiltersPanel
                 timeEntries={timeEntries}
-                filters={filters}
+                onFiltersChange={handleFiltersChange}
               />
+              <ExportControls timeEntries={timeEntries} filters={filters} />
             </div>
 
-            {/* Time Entries Table */}
-            <TeamTimeEntriesTable 
-              timeEntries={timeEntries}
-              filters={filters}
-            />
+            {/* Stats & graphiques (alimentés par les vraies données) */}
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.7fr)] gap-6 mb-8">
+              <TeamStatsCards timeEntries={timeEntries} />
+              <TeamChartsPanel timeEntries={timeEntries} />
+            </div>
+
+            {/* Tableau détaillé */}
+            <TeamTimeEntriesTable timeEntries={timeEntries} filters={filters} />
           </div>
         </main>
       </div>
