@@ -9,131 +9,133 @@ import TeamTimeEntriesTable from './components/TeamTimeEntriesTable';
 import ExportControls from './components/ExportControls';
 import { saisieTempsService } from '../../services/saisieTempsService';
 
-/**
- * Tableau de bord équipe
- * - charge toutes les saisies de temps visibles pour l'admin
- * - applique les filtres côté frontend (dates, projet, collaborateur, catégorie, recherche)
- * - passe les entrées filtrées aux cartes, graphiques, tableau et export
- */
 const TeamDashboard = () => {
   const { userProfile, loading: authLoading } = useAuth();
-
   const [timeEntries, setTimeEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Filtres utilisés par le panneau de filtres + backend
   const [filters, setFilters] = useState({
+    dateRange: 'current-week',
     startDate: '',
     endDate: '',
-    collaboratorId: '',
-    projectId: '',
-    categoryId: '',
+    collaborateur: '',
+    project: '',
+    category: '',
     searchTerm: '',
   });
 
-  // Chargement initial des données
-  useEffect(() => {
-    const load = async () => {
-      if (authLoading) return;
-      if (!userProfile || userProfile.role !== 'admin') {
-        setError("Vous n’avez pas les droits pour accéder à cette page.");
-        setLoading(false);
-        return;
-      }
+  // Chargement des saisies depuis Supabase en fonction des filtres (sauf searchTerm)
+  const loadTimeEntries = async () => {
+    try {
+      setLoading(true);
+      const filterParams = {};
 
-      try {
-        setLoading(true);
-        setError('');
-        const entries = await saisieTempsService.getAll({});
-        setTimeEntries(entries || []);
-      } catch (e) {
-        console.error('[TeamDashboard] erreur lors du chargement des saisies', e);
-        setError("Erreur lors du chargement des saisies de l'équipe.");
-      } finally {
-        setLoading(false);
-      }
-    };
+      if (filters?.startDate) filterParams.startDate = filters.startDate;
+      if (filters?.endDate) filterParams.endDate = filters.endDate;
+      if (filters?.collaborateur)
+        filterParams.collaborateurId = filters.collaborateur;
+      if (filters?.project) filterParams.projetId = filters.project;
+      if (filters?.category) filterParams.categorieId = filters.category;
 
-    load();
-  }, [authLoading, userProfile]);
-
-  const handleFiltersChange = (nextFilters) => {
-    setFilters(nextFilters);
+      const data = await saisieTempsService?.getAll(filterParams);
+      setTimeEntries(data || []);
+      setError('');
+    } catch (err) {
+      console.error('Error loading time entries:', err);
+      setError(err?.message || 'Erreur lors du chargement des saisies');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Application des filtres côté front
-  const filteredEntries = useMemo(() => {
-    return (timeEntries || []).filter((entry) => {
-      if (!entry) return false;
+  // Appel du chargement quand l’auth est prête ou que les filtres changent
+  useEffect(() => {
+    if (!authLoading) {
+      loadTimeEntries();
+    }
+  }, [authLoading, filters]);
 
-      const entryDate = entry.date ? new Date(entry.date) : null;
+  const handleFiltersChange = (newFilters) => {
+    setFilters(newFilters);
+  };
 
-      if (filters.startDate) {
-        const start = new Date(filters.startDate);
-        if (!entryDate || entryDate < start) return false;
-      }
-      if (filters.endDate) {
-        const end = new Date(filters.endDate);
-        end.setHours(23, 59, 59, 999);
-        if (!entryDate || entryDate > end) return false;
-      }
+  /**
+   * ✅ Liste utilisée pour l’EXPORT
+   * On part des timeEntries déjà filtrées par le backend (dates, collaborateur, projet, catégorie)
+   * et on applique ici le filtre de recherche (searchTerm) comme dans le tableau.
+   */
+  const filteredEntriesForExport = useMemo(() => {
+    let result = [...(timeEntries || [])];
 
-      if (filters.collaboratorId) {
-        if (entry.collaborateurId !== filters.collaboratorId) return false;
-      }
-
-      if (filters.projectId) {
-        if (entry.projetId !== filters.projectId) return false;
-      }
-
-      if (filters.categoryId) {
-        if (entry.categorieId !== filters.categoryId) return false;
-      }
-
-      if (filters.searchTerm) {
-        const term = filters.searchTerm.toLowerCase();
+    if (filters?.searchTerm) {
+      const search = filters.searchTerm.toLowerCase();
+      result = result.filter((entry) => {
         const text = [
-          entry.commentaire,
-          entry.projet?.nom,
-          entry.categorie?.nom,
-          entry.collaborateur?.nomComplet,
+          entry?.collaborateur?.nomComplet,
+          entry?.projet?.nom,
+          entry?.categorie?.nom,
+          entry?.commentaire,
         ]
           .filter(Boolean)
           .join(' ')
           .toLowerCase();
 
-        if (!text.includes(term)) return false;
-      }
+        return text.includes(search);
+      });
+    }
 
-      return true;
-    });
+    return result;
   }, [timeEntries, filters]);
 
+  // Vérification du rôle
+  const isAdmin = userProfile?.role === 'admin';
+
+  // Rediriger les non-admin vers leurs saisies perso
+  useEffect(() => {
+    if (!authLoading && !isAdmin) {
+      window.location.href = '/personal-time-entries';
+    }
+  }, [authLoading, isAdmin]);
+
+  // État de chargement
   if (authLoading || loading) {
     return (
       <>
         <NavigationHeader />
-        <div className="min-h-screen bg-background p-6">
-          <main className="pt-16 flex items-center justify-center">
-            <p className="text-sm text-muted-foreground">
-              Chargement du tableau de bord…
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
+            <p className="text-muted-foreground">
+              Chargement du tableau de bord équipe…
             </p>
-          </main>
+          </div>
         </div>
       </>
     );
   }
 
+  // Gestion des erreurs
   if (error) {
     return (
       <>
         <NavigationHeader />
-        <div className="min-h-screen bg-background p-6">
-          <main className="pt-16 flex items-center justify-center">
-            <div className="max-w-md bg-card border border-border rounded-lg p-6 text-center">
-              <p className="text-sm text-destructive">{error}</p>
+        <div className="min-h-screen bg-background">
+          <div className="pt-16 flex items-center justify-center min-h-[calc(100vh-4rem)]">
+            <div className="text-center max-w-md bg-card border border-border rounded-lg p-6">
+              <h2 className="text-xl font-semibold text-destructive mb-2">
+                Erreur
+              </h2>
+              <p className="text-muted-foreground mb-4">{error}</p>
+              <button
+                onClick={loadTimeEntries}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90"
+              >
+                Réessayer
+              </button>
             </div>
-          </main>
+          </div>
         </div>
       </>
     );
@@ -144,37 +146,53 @@ const TeamDashboard = () => {
       <NavigationHeader />
       <div className="min-h-screen bg-background p-6">
         <main className="pt-16">
-          <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-semibold text-foreground">
-                  Tableau de bord équipe
-                </h1>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Analyse des heures et des coûts sur la période sélectionnée.
-                </p>
+          <div className="max-w-7xl mx-auto px-6 py-8">
+            {/* En-tête page */}
+            <div className="mb-8">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-semibold text-foreground">
+                    Tableau de bord équipe
+                  </h1>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Analyse des heures et des coûts pour l&apos;ensemble de
+                    l&apos;équipe.
+                  </p>
+                </div>
+                <div className="hidden sm:flex flex-col items-end space-y-1">
+                  <span className="text-xs font-medium px-2 py-1 rounded-full bg-primary/10 text-primary">
+                    Rôle : Administrateur
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Dernière mise à jour :{' '}
+                    {new Date()?.toLocaleString('fr-FR')}
+                  </span>
+                </div>
               </div>
             </div>
 
-            {/* Filtres + export */}
-            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2.2fr)_minmax(0,1.2fr)] gap-4">
-              <TeamFiltersPanel
-                timeEntries={timeEntries}
+            {/* Cartes de statistiques (basées sur toutes les entrées chargées) */}
+            <TeamStatsCards timeEntries={timeEntries} />
+
+            {/* Graphiques (basés sur toutes les entrées chargées) */}
+            <TeamChartsPanel timeEntries={timeEntries} />
+
+            {/* Panneau de filtres */}
+            <TeamFiltersPanel
+              onFiltersChange={handleFiltersChange}
+              timeEntries={timeEntries}
+            />
+
+            {/* Contrôles d’export – ✅ on lui passe la liste filtrée pour l’export */}
+            <div className="mb-6">
+              <ExportControls
+                timeEntries={filteredEntriesForExport}
                 filters={filters}
-                onFiltersChange={handleFiltersChange}
               />
-              <ExportControls timeEntries={filteredEntries} />
             </div>
 
-            {/* Stats & graphiques */}
-            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.7fr)] gap-6">
-              <TeamStatsCards timeEntries={filteredEntries} />
-              <TeamChartsPanel timeEntries={filteredEntries} />
-            </div>
-
-            {/* Tableau détaillé */}
-            <TeamTimeEntriesTable timeEntries={filteredEntries} />
+            {/* Tableau détaillé – il applique déjà searchTerm de son côté */}
+            <TeamTimeEntriesTable timeEntries={timeEntries} filters={filters} />
           </div>
         </main>
       </div>
