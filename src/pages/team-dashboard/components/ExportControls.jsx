@@ -3,10 +3,10 @@ import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import { saisieTempsService } from '../../../services/saisieTempsService';
 
-const ExportControls = ({ timeEntries = [], filters }) => {
+const ExportControls = ({ timeEntries = [] }) => {
   const [isExporting, setIsExporting] = useState(false);
 
-  // On considère que timeEntries = données déjà filtrées par le tableau de bord
+  // timeEntries = saisies déjà filtrées (période, projet, collab, etc.)
   const filteredEntries = timeEntries || [];
 
   const selectedCount = filteredEntries.length;
@@ -31,14 +31,14 @@ const ExportControls = ({ timeEntries = [], filters }) => {
     try {
       let entriesToExport = filteredEntries;
 
-      // Mode "équipe complète" : on recharge toutes les saisies depuis Supabase
+      // Mode "équipe complète" : on recharge tout depuis Supabase
       if (mode === 'full') {
         const allEntries = await saisieTempsService.getAll();
         entriesToExport = allEntries || [];
       }
 
       if (!entriesToExport || entriesToExport.length === 0) {
-        alert("Aucune saisie à exporter pour cette sélection.");
+        alert('Aucune saisie à exporter pour cette sélection.');
         return;
       }
 
@@ -50,7 +50,9 @@ const ExportControls = ({ timeEntries = [], filters }) => {
     } catch (error) {
       console.error('Erreur lors de l’export CSV:', error);
       alert(
-        `Erreur lors de l’export: ${error?.message || 'Une erreur est survenue. Veuillez réessayer.'}`
+        `Erreur lors de l’export: ${
+          error?.message || 'Une erreur est survenue. Veuillez réessayer.'
+        }`
       );
     } finally {
       setIsExporting(false);
@@ -127,7 +129,9 @@ const ExportControls = ({ timeEntries = [], filters }) => {
         <div className="flex items-center space-x-3">
           <Icon name="Download" size={20} className="text-muted-foreground" />
           <div>
-            <h3 className="text-lg font-semibold text-foreground">Export des données</h3>
+            <h3 className="text-lg font-semibold text-foreground">
+              Export des données
+            </h3>
             <p className="text-sm text-muted-foreground">
               Exporter les saisies de temps au format CSV
             </p>
@@ -199,7 +203,7 @@ const ExportControls = ({ timeEntries = [], filters }) => {
           </div>
         </div>
 
-        {/* Bloc historique statique (optionnel) */}
+        {/* Historique (fixe, purement visuel) */}
         <div className="mt-4">
           <p className="text-xs font-medium text-muted-foreground mb-1">
             Derniers exports (exemple)
@@ -210,7 +214,9 @@ const ExportControls = ({ timeEntries = [], filters }) => {
               <span className="text-emerald-600">Réussi (247 entrées)</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Export filtré - 14/11/2024</span>
+              <span className="text-muted-foreground">
+                Export filtré - 14/11/2024
+              </span>
               <span className="text-emerald-600">Réussi (89 entrées)</span>
             </div>
             <div className="flex items-center justify-between">
