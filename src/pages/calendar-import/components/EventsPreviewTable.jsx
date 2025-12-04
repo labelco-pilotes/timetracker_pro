@@ -51,12 +51,18 @@ const EventsPreviewTable = ({
                   label=""
                 />
               </th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Date</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Heure</th>
+              <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">
+                Date
+              </th>
+              <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">
+                Heure
+              </th>
               <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">
                 Durée (h)
               </th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Projet</th>
+              <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">
+                Projet
+              </th>
               <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">
                 Catégorie
               </th>
@@ -65,7 +71,6 @@ const EventsPreviewTable = ({
               </th>
             </tr>
           </thead>
-
           <tbody className="divide-y divide-border">
             {events?.map((event) => {
               const isSelected = selectedEvents?.has(event?.id);
@@ -73,13 +78,16 @@ const EventsPreviewTable = ({
 
               const projectCategories =
                 categories?.filter((cat) =>
-                  eventProjectId
-                    ? String(cat?.projetId) === String(eventProjectId)
-                    : false,
+                  eventProjectId ? String(cat?.projetId) === String(eventProjectId) : false
                 ) || [];
 
               return (
-                <tr key={event?.id} className={!isSelected ? 'opacity-60 bg-muted/10' : ''}>
+                <tr
+                  key={event?.id}
+                  className={`hover:bg-muted/30 transition-colors ${
+                    isSelected ? 'bg-primary/5' : ''
+                  }`}
+                >
                   <td className="px-4 py-3 align-top">
                     <Checkbox
                       checked={isSelected}
@@ -87,25 +95,22 @@ const EventsPreviewTable = ({
                       label=""
                     />
                   </td>
-
                   <td className="px-4 py-3 align-top text-sm text-foreground whitespace-nowrap">
                     {event?.date ? formatDate(event?.date) : '—'}
                   </td>
-
                   <td className="px-4 py-3 align-top text-sm text-muted-foreground whitespace-nowrap">
                     {event?.startTime && event?.endTime
                       ? `${event?.startTime} – ${event?.endTime}`
                       : '—'}
                   </td>
-
                   <td className="px-4 py-3 align-top">
                     <input
                       type="number"
                       step="0.25"
                       min="0"
-                      value={event?.duration ?? ''}
+                      value={event?.duration}
                       onChange={(e) => onUpdateDuration(event?.id, e?.target?.value)}
-                      className="w-24 px-2 py-1 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      className="w-20 px-2 py-1 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                       disabled={!isSelected}
                     />
                   </td>
@@ -129,7 +134,7 @@ const EventsPreviewTable = ({
                     </select>
                   </td>
 
-                  {/* Catégorie */}
+                  {/* Catégorie (filtrée par projet) */}
                   <td className="px-4 py-3 align-top">
                     <select
                       className="w-48 px-2 py-1 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -160,7 +165,7 @@ const EventsPreviewTable = ({
                   <td className="px-4 py-3 align-top">
                     <input
                       type="text"
-                      value={event?.comment || ''}
+                      value={event?.comment}
                       onChange={(e) => onUpdateComment(event?.id, e?.target?.value)}
                       className="w-full px-3 py-1.5 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                       placeholder="Ajouter un commentaire..."
@@ -178,9 +183,7 @@ const EventsPreviewTable = ({
         <div className="p-8 text-center text-muted-foreground">
           <Icon name="Calendar" size={48} className="mx-auto mb-3 opacity-50" />
           <p>Aucun événement à afficher</p>
-          <p className="text-sm mt-1">
-            Chargez d&apos;abord les événements depuis votre calendrier
-          </p>
+          <p className="text-sm mt-1">Chargez d'abord les événements depuis votre calendrier</p>
         </div>
       )}
     </div>
@@ -188,3 +191,4 @@ const EventsPreviewTable = ({
 };
 
 export default EventsPreviewTable;
+
