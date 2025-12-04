@@ -1,344 +1,179 @@
-import React, { useMemo, useState } from 'react';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from 'recharts';
-import Icon from '../../../components/AppIcon';
-import Select from '../../../components/ui/Select';
+import React, { useState, useEffect, useMemo } from 'react';
 
-const COLORS = [
-  '#3b82f6',
-  '#8b5cf6',
-  '#ec4899',
-  '#f59e0b',
-  '#10b981',
-  '#6366f1',
-  '#f97316',
-  '#14b8a6',
-];
+import { useAuth } from '../../contexts/AuthContext';
+import NavigationHeader from '../navigation-header';
+import TeamStatsCards from './components/TeamStatsCards';
+import TeamChartsPanel from './components/TeamChartsPanel';
+import TeamFiltersPanel from './components/TeamFiltersPanel';
+import TeamTimeEntriesTable from './components/TeamTimeEntriesTable';
+import ExportControls from './components/ExportControls';
+import { saisieTempsService } from '../../services/saisieTempsService';
 
+const TeamDashboard = () => {
+  const { userProfile, loading: authLoading } = useAuth();
 
-const TeamChartsPanel = ({ timeEntries = [] }) => {
-  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [timeEntries, setTimeEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  // Heures par projet
-  const hoursByProject = useMemo(() => {
-    const map = new Map();
-    timeEntries.forEach((e) => {
-      if (!e?.projet) return;
-      const key = e.projet.nom || 'Projet sans nom';
-      map.set(key, (map.get(key) || 0) + (e.dureeHeures || 0));
-    });
-    return Array.from(map.entries()).map(([name, hours]) => ({ name, hours }));
-  }, [timeEntries]);
+  const [filters, setFilters] = useState({
+    startDate: '',
+    endDate: '',
+    collaboratorId: '',
+    projectId: '',
+    categoryId: '',
+    searchTerm: '',
+  });
 
-  // Heures par collaborateur
-  const hoursByCollaborator = useMemo(() => {
-    const map = new Map();
-    timeEntries.forEach((e) => {
-      if (!e?.collaborateur) return;
-      const key = e.collaborateur.nomComplet || e.collaborateur.email;
-      map.set(key, (map.get(key) || 0) + (e.dureeHeures || 0));
-    });
-    return Array.from(map.entries()).map(([name, hours]) => ({ name, hours }));
-  }, [timeEntries]);
-
-  // 💶 Coût par projet (somme des heures * taux horaire)
-  const costByProject = useMemo(() => {
-    const map = new Map();
-    timeEntries.forEach((e) => {
-      if (!e?.projet) return;
-      const key = e.projet.nom || 'Projet sans nom';
-      const hours = e.dureeHeures || 0;
-      const rate = e.collaborateur?.tauxHoraire || 0;
-      const cost = hours * rate;
-      map.set(key, (map.get(key) || 0) + cost);
-    });
-    return Array.from(map.entries()).map(([name, cost]) => ({ name, cost }));
-  }, [timeEntries]);
-
-  // Projets pour filtre du donut
-  const projectFilterOptions = useMemo(() => {
-    const map = new Map();
-    timeEntries.forEach((e) => {
-      if (e?.projet) {
-        map.set(e.projetId, e.projet.nom || 'Projet sans nom');
+  // Chargement des saisies
+  useEffect(() => {
+    const load = async () => {
+      if (authLoading) return;
+      if (!userProfile || userProfile.role !== 'admin') {
+        setError("Vous n’avez pas les droits pour accéder à cette page.");
+        setLoading(false);
+        return;
       }
-    });
-    return [
-      { value: '', label: 'Tous les projets' },
-      ...Array.from(map.entries()).map(([value, label]) => ({ value, label })),
-    ];
-  }, [timeEntries]);
 
-  // Répartition par catégorie (coût) avec filtre projet
-  const categoryCostData = useMemo(() => {
-    const map = new Map();
-
-    timeEntries.forEach((e) => {
-      if (selectedProjectId && e.projetId !== selectedProjectId) return;
-
-      const catName = e?.categorie?.nom || 'Sans catégorie';
-      const hours = e?.dureeHeures || 0;
-      const rate = e?.collaborateur?.tauxHoraire || 0;
-      const cost = hours * rate;
-
-      if (!map.has(catName)) {
-        map.set(catName, { name: catName, hours: 0, cost: 0 });
+      try {
+        setLoading(true);
+        setError('');
+        const entries = await saisieTempsService.getAll({});
+        setTimeEntries(entries || []);
+      } catch (e) {
+        console.error('[TeamDashboard] erreur lors du chargement des saisies', e);
+        setError("Erreur lors du chargement des saisies de l'équipe.");
+      } finally {
+        setLoading(false);
       }
-      const current = map.get(catName);
-      current.hours += hours;
-      current.cost += cost;
-      map.set(catName, current);
+    };
+
+    load();
+  }, [authLoading, userProfile]);
+
+  const handleFiltersChange = (nextFilters) => {
+    setFilters(nextFilters);
+  };
+
+  // ✅ Données filtrées (utilisées pour stats, graphiques, tableau et export)
+  const filteredEntries = useMemo(() => {
+    return (timeEntries || []).filter((entry) => {
+      if (!entry) return false;
+
+      const entryDate = entry.date ? new Date(entry.date) : null;
+
+      if (filters.startDate) {
+        const start = new Date(filters.startDate);
+        if (!entryDate || entryDate < start) return false;
+      }
+      if (filters.endDate) {
+        const end = new Date(filters.endDate);
+        end.setHours(23, 59, 59, 999);
+        if (!entryDate || entryDate > end) return false;
+      }
+
+      if (filters.collaboratorId) {
+        if (entry.collaborateurId !== filters.collaboratorId) return false;
+      }
+
+      if (filters.projectId) {
+        if (entry.projetId !== filters.projectId) return false;
+      }
+
+      if (filters.categoryId) {
+        if (entry.categorieId !== filters.categoryId) return false;
+      }
+
+      if (filters.searchTerm) {
+        const term = filters.searchTerm.toLowerCase();
+        const text = [
+          entry.commentaire,
+          entry.projet?.nom,
+          entry.categorie?.nom,
+          entry.collaborateur?.nomComplet,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+
+        if (!text.includes(term)) return false;
+      }
+
+      return true;
     });
+  }, [timeEntries, filters]);
 
-    return Array.from(map.values());
-  }, [timeEntries, selectedProjectId]);
-
-  const formatCurrency = (value) =>
-    new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: 'EUR',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value || 0);
-
-  const CustomPieTooltip = ({ active, payload }) => {
-    if (!active || !payload || !payload.length) return null;
-    const { name, hours, cost } = payload[0].payload;
+  if (authLoading || loading) {
     return (
-      <div className="bg-card border border-border rounded-md p-2 text-xs">
-        <div className="font-medium text-foreground">{name}</div>
-        <div className="text-muted-foreground">
-          {hours.toFixed(1)} h • {formatCurrency(cost)}
+      <>
+        <NavigationHeader />
+        <div className="min-h-screen bg-background p-6">
+          <main className="pt-16 flex items-center justify-center">
+            <p className="text-sm text-muted-foreground">
+              Chargement du tableau de bord…
+            </p>
+          </main>
         </div>
-      </div>
+      </>
     );
-  };
+  }
 
-  const renderCategoryLabel = (props) => {
-    const { cx, cy, midAngle, innerRadius, outerRadius, index } = props;
-    const RADIAN = Math.PI / 180;
-    const radius = innerRadius + (outerRadius - innerRadius) * 0.6;
-    const x = cx + radius * Math.cos(-midAngle * RADIAN);
-    const y = cy + radius * Math.sin(-midAngle * RADIAN);
-
-    const data = categoryCostData[index];
-    if (!data) return null;
-
+  if (error) {
     return (
-      <text
-        x={x}
-        y={y}
-        fill="#fff"
-        textAnchor={x > cx ? 'start' : 'end'}
-        dominantBaseline="central"
-        fontSize={11}
-      >
-        {formatCurrency(data.cost)}
-      </text>
+      <>
+        <NavigationHeader />
+        <div className="min-h-screen bg-background p-6">
+          <main className="pt-16 flex items-center justify-center">
+            <div className="max-w-md bg-card border border-border rounded-lg p-6 text-center">
+              <p className="text-sm text-destructive">{error}</p>
+            </div>
+          </main>
+        </div>
+      </>
     );
-  };
+  }
 
   return (
-    <div className="space-y-4">
-      {/* Heures par projet */}
-      <div className="bg-card rounded-lg shadow-sm border border-border p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-2">
-            <Icon name="BarChart2" size={18} className="text-primary" />
-            <h3 className="text-sm font-semibold text-foreground">Heures par projet</h3>
-          </div>
-        </div>
-        {hoursByProject.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Aucune saisie pour la période sélectionnée.
-          </p>
-        ) : (
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={hoursByProject} margin={{ left: 0, right: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis
-                dataKey="name"
-                tick={{ fontSize: 11 }}
-                interval={0}
-                angle={-35}
-                textAnchor="end"
-                height={70}
-              />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Bar dataKey="hours" name="Heures" fill="#3b82f6" />
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-
-      {/* Coût par projet */}
-      <div className="bg-card rounded-lg shadow-sm border border-border p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-2">
-            <Icon name="DollarSign" size={18} className="text-primary" />
-            <h3 className="text-sm font-semibold text-foreground">
-              Coût par projet (€)
-            </h3>
-          </div>
-        </div>
-        {costByProject.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Aucune saisie pour la période sélectionnée.
-          </p>
-        ) : (
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={costByProject} margin={{ left: 0, right: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis
-                dataKey="name"
-                tick={{ fontSize: 11 }}
-                interval={0}
-                angle={-35}
-                textAnchor="end"
-                height={70}
-              />
-              <YAxis
-                tick={{ fontSize: 11 }}
-                tickFormatter={(v) => formatCurrency(v)}
-              />
-              <Tooltip
-                formatter={(value) => formatCurrency(value)}
-                labelFormatter={(label) => `Projet : ${label}`}
-              />
-              <Bar dataKey="cost" name="Coût" fill="#f97316" />
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-
-      {/* Heures par collaborateur */}
-      <div className="bg-card rounded-lg shadow-sm border border-border p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-2">
-            <Icon name="Users" size={18} className="text-primary" />
-            <h3 className="text-sm font-semibold text-foreground">
-              Heures par collaborateur
-            </h3>
-          </div>
-        </div>
-        {hoursByCollaborator.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Aucune saisie pour la période sélectionnée.
-          </p>
-        ) : (
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={hoursByCollaborator} margin={{ left: 0, right: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis
-                dataKey="name"
-                tick={{ fontSize: 11 }}
-                interval={0}
-                angle={-35}
-                textAnchor="end"
-                height={70}
-              />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Bar dataKey="hours" name="Heures" fill="#8b5cf6" />
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-
-      {/* Répartition par catégorie (coût) */}
-      <div className="bg-card rounded-lg shadow-sm border border-border p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center space-x-2">
-            <Icon name="PieChart" size={18} className="text-primary" />
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">
-                Répartition par catégorie (coût)
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Chaque tranche représente le coût estimé par catégorie.
-              </p>
+    <>
+      <NavigationHeader />
+      <div className="min-h-screen bg-background p-6">
+        <main className="pt-16">
+          <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-semibold text-foreground">
+                  Tableau de bord équipe
+                </h1>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Analyse des heures et des coûts sur la période sélectionnée.
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="w-52">
-            <Select
-              label="Projet"
-              placeholder="Tous les projets"
-              value={selectedProjectId}
-              onChange={(v) => setSelectedProjectId(v)}
-              options={projectFilterOptions}
-            />
-          </div>
-        </div>
 
-        {categoryCostData.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Aucune saisie pour cette sélection.
-          </p>
-        ) : (
-          <div className="flex flex-col lg:flex-row lg:items-center lg:space-x-6">
-            <div className="flex-1">
-              <ResponsiveContainer width="100%" height={260}>
-                <PieChart>
-                  <Pie
-                    data={categoryCostData}
-                    dataKey="cost"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={90}
-                    paddingAngle={2}
-                    labelLine={false}
-                    label={renderCategoryLabel}
-                  >
-                    {categoryCostData.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={COLORS[index % COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<CustomPieTooltip />} />
-                </PieChart>
-              </ResponsiveContainer>
+            {/* 🔝 Filtres + Export tout en haut */}
+            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2.2fr)_minmax(0,1.2fr)] gap-4">
+              <TeamFiltersPanel
+                timeEntries={timeEntries}
+                filters={filters}
+                onFiltersChange={handleFiltersChange}
+              />
+              <ExportControls timeEntries={filteredEntries} />
             </div>
-            <div className="mt-4 lg:mt-0 lg:w-56 space-y-2">
-              {categoryCostData.map((item, index) => (
-                <div
-                  key={item.name}
-                  className="flex items-center justify-between text-xs"
-                >
-                  <div className="flex items-center space-x-2">
-                    <span
-                      className="inline-block w-3 h-3 rounded-sm"
-                      style={{
-                        backgroundColor: COLORS[index % COLORS.length],
-                      }}
-                    />
-                    <span className="text-foreground">{item.name}</span>
-                  </div>
-                  <div className="text-muted-foreground">
-                    {item.hours.toFixed(1)} h • {formatCurrency(item.cost)}
-                  </div>
-                </div>
-              ))}
+
+            {/* Stats & graphiques basés sur les données filtrées */}
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.7fr)] gap-6">
+              <TeamStatsCards timeEntries={filteredEntries} />
+              <TeamChartsPanel timeEntries={filteredEntries} />
             </div>
+
+            {/* Tableau détaillé filtré */}
+            <TeamTimeEntriesTable timeEntries={filteredEntries} />
           </div>
-        )}
+        </main>
       </div>
-    </div>
+    </>
   );
 };
 
-export default TeamChartsPanel;
+export default TeamDashboard;
