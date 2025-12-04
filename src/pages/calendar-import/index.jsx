@@ -16,24 +16,24 @@ import { categorieService } from '../../services/categorieService';
 const CalendarImport = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-
+  
   // Form state
   const [icsUrl, setIcsUrl] = useState('');
   const [selectedWeek, setSelectedWeek] = useState('');
-
-  // Events state
   const [events, setEvents] = useState([]);
   const [selectedEvents, setSelectedEvents] = useState(new Set());
+  
+  // Métadonnées pour les menus déroulants
   const [projects, setProjects] = useState([]);
   const [categories, setCategories] = useState([]);
-
+  
   // UI state
   const [isLoading, setIsLoading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [errors, setErrors] = useState({});
   const [showSuccess, setShowSuccess] = useState(false);
 
-  // Chargement des projets et catégories pour les menus déroulants
+  // Charger projets & catégories dès que la page s’ouvre
   useEffect(() => {
     const loadMetadata = async () => {
       try {
@@ -44,7 +44,7 @@ const CalendarImport = () => {
         setProjects(allProjects || []);
         setCategories(allCategories || []);
       } catch (error) {
-        console.error('[CalendarImport] Erreur lors du chargement des projets/catégories', error);
+        console.error('[CalendarImport] Erreur chargement projets/catégories', error);
       }
     };
 
@@ -64,13 +64,11 @@ const CalendarImport = () => {
 
     setIsLoading(true);
     setErrors({});
-    setEvents([]);
-    setSelectedEvents(new Set());
 
     try {
-      // Call backend Edge Function instead of direct fetch
+      // Appel de l’Edge Function import-ics (déjà existante)
       const { data, error } = await supabase?.functions?.invoke('import-ics', {
-        body: { icsUrl },
+        body: { icsUrl }
       });
 
       if (error) {
@@ -82,43 +80,43 @@ const CalendarImport = () => {
         throw new Error(data.error);
       }
 
-      const icsContent = data?.content;
-      if (!icsContent) {
-        throw new Error('Aucun contenu ICS trouvé');
+      if (!data?.rawIcs) {
+        throw new Error('Aucune donnée reçue du serveur');
       }
 
-      const jcalData = ICAL.parse(icsContent);
-      const vcalendar = new ICAL.Component(jcalData);
-      const vevents = vcalendar?.getAllSubcomponents('vevent') || [];
+      const icsData = data?.rawIcs;
+      
+      // Parsing ICS via ical.js (import statique en haut du fichier)
+      const jcalData = ICAL?.parse(icsData);
+      const comp = new ICAL.Component(jcalData);
+      const vevents = comp?.getAllSubcomponents('vevent');
 
-      // Parse selected week (format "YYYY-Wxx")
-      const [yearStr, weekStr] = selectedWeek?.split('-W') || [];
-      const year = parseInt(yearStr, 10);
-      const week = parseInt(weekStr, 10);
-
-      const weekStart = getWeekStartDate(year, week);
+      // Période de la semaine sélectionnée
+      const [year, week] = selectedWeek?.split('-W');
+      const weekStart = getWeekStartDate(parseInt(year), parseInt(week));
       const weekEnd = new Date(weekStart);
       weekEnd?.setDate(weekEnd?.getDate() + 7);
 
+      // Parsing des événements dans la semaine
       const parsedEvents = vevents
         ?.map((vevent, index) => {
           const event = new ICAL.Event(vevent);
           const startDate = new Date(event?.startDate?.toJSDate());
           const endDate = new Date(event?.endDate?.toJSDate());
-
-          // Check if event is in selected week
+          
+          // On garde seulement les événements dans la semaine
           if (startDate < weekStart || startDate >= weekEnd) {
             return null;
           }
 
-          // Calculate duration in decimal hours
+          // Durée en heures décimales
           const durationMs = endDate - startDate;
           const durationHours = (durationMs / (1000 * 60 * 60))?.toFixed(2);
 
-          // Build comment with title and location
+          // Commentaire = titre + lieu
           let comment = event?.summary || '';
           if (event?.location) {
-            comment = comment ? `${comment} – ${event.location}` : event.location;
+            comment += ` – ${event?.location}`;
           }
 
           return {
@@ -130,6 +128,7 @@ const CalendarImport = () => {
             comment: comment,
             summary: event?.summary || '',
             location: event?.location || '',
+            // nouveaux champs pour les menus déroulants
             projetId: null,
             categorieId: null,
           };
@@ -141,38 +140,30 @@ const CalendarImport = () => {
         setEvents([]);
       } else {
         setEvents(parsedEvents);
-        // Select all events by default
-        setSelectedEvents(new Set(parsedEvents?.map((e) => e?.id)));
+        // Tous sélectionnés par défaut
+        setSelectedEvents(new Set(parsedEvents?.map(e => e?.id)));
       }
     } catch (error) {
       console.error('Error loading events:', error);
-      setErrors({
-        load:
-          error?.message ||
-          "Erreur lors du chargement des événements. Vérifiez l'URL et réessayez.",
+      setErrors({ 
+        load: error?.message || 'Erreur lors du chargement des événements. Vérifiez l\'URL et réessayez.' 
       });
       setEvents([]);
-      setSelectedEvents(new Set());
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleImportEvents = async () => {
-    if (!user) {
-      setErrors({ import: 'Vous devez être connecté pour importer des événements.' });
+    const eventsToImport = events?.filter(e => selectedEvents?.has(e?.id));
+    
+    if (eventsToImport?.length === 0) {
+      setErrors({ import: 'Veuillez sélectionner au moins un événement à importer' });
       return;
     }
 
-    const eventsToImport = events?.filter((e) => selectedEvents?.has(e?.id));
-
-    if (!eventsToImport?.length) {
-      setErrors({ import: 'Veuillez sélectionner au moins un événement à importer.' });
-      return;
-    }
-
-    // Validate that all selected events have duration > 0
-    const invalidEvents = eventsToImport?.filter((e) => parseFloat(e?.duration) <= 0);
+    // Durée > 0 pour tous les événements sélectionnés
+    const invalidEvents = eventsToImport?.filter(e => parseFloat(e?.duration) <= 0);
     if (invalidEvents?.length > 0) {
       setErrors({ import: 'Tous les événements doivent avoir une durée supérieure à 0' });
       return;
@@ -188,6 +179,8 @@ const CalendarImport = () => {
             date: event?.date,
             dureeHeures: parseFloat(event?.duration),
             commentaire: event?.comment,
+            // on enregistre projet & catégorie si l’utilisateur les a choisis,
+            // sinon null comme avant
             projetId: event?.projetId ?? null,
             categorieId: event?.categorieId ?? null,
           });
@@ -197,13 +190,13 @@ const CalendarImport = () => {
         }
       });
 
-      // Wait for all imports to complete
       await Promise.all(importPromises);
-
+      
       setShowSuccess(true);
-
-      // Clear form after successful import (après le message de succès)
+      
+      // Nettoyage après import (on garde d’abord l’écran de succès)
       setTimeout(() => {
+        setShowSuccess(false);
         setIcsUrl('');
         setSelectedWeek('');
         setEvents([]);
@@ -211,8 +204,8 @@ const CalendarImport = () => {
       }, 3000);
     } catch (error) {
       console.error('Error importing events:', error);
-      setErrors({
-        import: `Erreur lors de l'importation: ${error?.message || 'Veuillez réessayer.'}`,
+      setErrors({ 
+        import: `Erreur lors de l'importation: ${error?.message || 'Veuillez réessayer.'}`
       });
     } finally {
       setIsImporting(false);
@@ -233,41 +226,48 @@ const CalendarImport = () => {
     if (selectedEvents?.size === events?.length) {
       setSelectedEvents(new Set());
     } else {
-      setSelectedEvents(new Set(events?.map((e) => e?.id)));
+      setSelectedEvents(new Set(events?.map(e => e?.id)));
     }
   };
 
   const handleUpdateEventComment = (eventId, newComment) => {
-    setEvents(events?.map((e) => (e?.id === eventId ? { ...e, comment: newComment } : e)));
+    setEvents(events?.map(e => 
+      e?.id === eventId ? { ...e, comment: newComment } : e
+    ));
   };
 
   const handleUpdateEventDuration = (eventId, newDuration) => {
-    setEvents(
-      events?.map((e) => (e?.id === eventId ? { ...e, duration: newDuration } : e)),
-    );
+    setEvents(events?.map(e => 
+      e?.id === eventId ? { ...e, duration: newDuration } : e
+    ));
   };
 
   const handleUpdateEventProject = (eventId, newProjectId) => {
     setEvents(
-      events?.map((e) =>
+      events?.map(e =>
         e?.id === eventId
-          ? { ...e, projetId: newProjectId ? Number(newProjectId) : null, categorieId: null }
-          : e,
-      ),
+          ? {
+              ...e,
+              projetId: newProjectId ? Number(newProjectId) : null,
+              // si on change de projet -> on remet la catégorie à null
+              categorieId: null,
+            }
+          : e
+      )
     );
   };
 
   const handleUpdateEventCategory = (eventId, newCategoryId) => {
     setEvents(
-      events?.map((e) =>
+      events?.map(e =>
         e?.id === eventId
           ? { ...e, categorieId: newCategoryId ? Number(newCategoryId) : null }
-          : e,
-      ),
+          : e
+      )
     );
   };
 
-  // Helper function to get week start date
+  // Calcul du lundi de la semaine ISO
   const getWeekStartDate = (year, week) => {
     const simple = new Date(year, 0, 1 + (week - 1) * 7);
     const dow = simple?.getDay();
@@ -340,7 +340,7 @@ const CalendarImport = () => {
           <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-6 items-start">
             {/* Main content */}
             <div className="space-y-4">
-              {/* Error display */}
+              {/* Erreurs */}
               {(errors?.url ||
                 errors?.week ||
                 errors?.load ||
@@ -361,9 +361,13 @@ const CalendarImport = () => {
               )}
 
               <div className="space-y-6">
-                {/* Input section */}
+                {/* Formulaire URL + semaine */}
                 <div className="bg-card p-6 rounded-lg border border-border card-shadow space-y-6">
-                  <IcsUrlInput value={icsUrl} onChange={setIcsUrl} error={errors?.url} />
+                  <IcsUrlInput
+                    value={icsUrl}
+                    onChange={setIcsUrl}
+                    error={errors?.url}
+                  />
 
                   <WeekSelector
                     value={selectedWeek}
@@ -384,7 +388,7 @@ const CalendarImport = () => {
                   </div>
                 </div>
 
-                {/* Events preview table */}
+                {/* Tableau des événements */}
                 {events?.length > 0 && (
                   <>
                     <EventsPreviewTable
@@ -400,7 +404,7 @@ const CalendarImport = () => {
                       onUpdateCategory={handleUpdateEventCategory}
                     />
 
-                    {/* Import actions */}
+                    {/* Actions d'import */}
                     <div className="bg-card p-6 rounded-lg border border-border card-shadow">
                       <div className="flex items-center justify-between">
                         <div className="text-sm text-muted-foreground">
@@ -428,7 +432,7 @@ const CalendarImport = () => {
               </div>
             </div>
 
-            {/* Side help panel */}
+            {/* Panneau d’aide */}
             <div className="bg-card p-6 rounded-lg border border-border card-shadow space-y-6">
               <div className="flex items-center space-x-2">
                 <Icon name="Info" size={18} className="text-primary" />
@@ -440,13 +444,10 @@ const CalendarImport = () => {
                   (commençant par <code>https://</code> ou <code>webcal://</code>).
                 </p>
                 <p>2. Choisissez la semaine que vous souhaitez importer.</p>
+                <p>3. Cliquez sur &quot;Charger les événements&quot; pour voir un aperçu.</p>
                 <p>
-                  3. Cliquez sur &quot;Charger les événements&quot; pour voir un aperçu des
-                  événements de cette semaine.
-                </p>
-                <p>
-                  4. Sélectionnez les événements à importer, ajustez la durée si nécessaire et
-                  associez un projet / une catégorie.
+                  4. Sélectionnez les événements à importer, ajustez la durée et associez un
+                  projet / une catégorie.
                 </p>
                 <p>
                   5. Cliquez sur &quot;Créer les saisies de temps sélectionnées&quot; pour
