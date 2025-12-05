@@ -3,6 +3,7 @@ import { BrowserRouter, Routes as RouterRoutes, Route } from "react-router-dom";
 import ScrollToTop from "components/ScrollToTop";
 import ErrorBoundary from "components/ErrorBoundary";
 import NotFound from "pages/NotFound";
+
 import ProjectManagement from './pages/project-management';
 import PersonalTimeEntries from './pages/personal-time-entries';
 import TimeEntryCreation from './pages/time-entry-creation';
@@ -17,14 +18,19 @@ import PasswordResetCompletion from './pages/password-reset-completion';
 import UserSettings from './pages/user-settings';
 import CollaboratorManagement from './pages/collaborator-management';
 
+// 🔥 Nouvelle page de test pour l'import CSV
+import CsvImportTest from './pages/CsvImportTest';
+
 function Routes() {
   return (
     <BrowserRouter>
-      <ScrollToTop />
       <ErrorBoundary>
+        <ScrollToTop />
         <RouterRoutes>
-          {/* Define your route here */}
+          {/* Page d’accueil : à adapter si besoin */}
           <Route path="/" element={<LoginAuthentication />} />
+
+          {/* Pages existantes */}
           <Route path="/project-management" element={<ProjectManagement />} />
           <Route path="/personal-time-entries" element={<PersonalTimeEntries />} />
           <Route path="/time-entry-creation" element={<TimeEntryCreation />} />
@@ -37,6 +43,11 @@ function Routes() {
           <Route path="/password-reset-completion" element={<PasswordResetCompletion />} />
           <Route path="/user-settings" element={<UserSettings />} />
           <Route path="/collaborator-management" element={<CollaboratorManagement />} />
+
+          {/* 🧪 Route temporaire pour ton test d’import CSV */}
+          <Route path="/csv-import-test" element={<CsvImportTest />} />
+
+          {/* 404 */}
           <Route path="*" element={<NotFound />} />
         </RouterRoutes>
       </ErrorBoundary>
