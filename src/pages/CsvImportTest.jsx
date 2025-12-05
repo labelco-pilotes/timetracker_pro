@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import NavigationHeader from './navigation-header';
 import Icon from '../components/AppIcon';
 import Button from '../components/ui/Button';
@@ -21,9 +21,9 @@ const CsvImportTest = () => {
   const [isImporting, setIsImporting] = useState(false);
   const [error, setError] = useState(null);
 
-  // caches projets / catégories pour éviter de recréer 50 fois les mêmes
-  const [projectsByName, setProjectsByName] = useState({});
-  const [categoriesByKey, setCategoriesByKey] = useState({}); // key = `${projetId}__${nomCat}`
+  // caches persos via useRef pour ne PAS recréer projet/catégorie à chaque ligne
+  const projectsByNameRef = useRef({});
+  const categoriesByKeyRef = useRef({}); // key = `${projetId}__${nomCat}`
 
   // Charger les projets + catégories existants pour faire la correspondance par nom
   useEffect(() => {
@@ -49,8 +49,8 @@ const CsvImportTest = () => {
           }
         });
 
-        setProjectsByName(projMap);
-        setCategoriesByKey(catMap);
+        projectsByNameRef.current = projMap;
+        categoriesByKeyRef.current = catMap;
       } catch (e) {
         console.error('[CsvImportTest] Erreur chargement meta', e);
         setError("Erreur lors du chargement des projets / catégories existants.");
@@ -85,7 +85,7 @@ const CsvImportTest = () => {
         const text = event.target.result;
 
         // On suppose un CSV simple, séparateur = ','
-        // Header attendu : Date,User,Project,Task,Decimal Hours
+        // Header attendu : Date,User,Project,Task, Decimal Hours
         const lines = text.split(/\r?\n/).filter((l) => l.trim() !== '');
         if (lines.length <= 1) {
           setError("Le fichier ne contient aucune ligne de données.");
@@ -157,9 +157,11 @@ const CsvImportTest = () => {
     const name = (projectName || '').trim();
     if (!name) return null;
 
+    const map = projectsByNameRef.current;
+
     // déjà en cache ?
-    if (projectsByName[name]) {
-      return projectsByName[name];
+    if (map[name]) {
+      return map[name];
     }
 
     // Créer le projet si non existant
@@ -169,7 +171,7 @@ const CsvImportTest = () => {
       status: 'active',
     });
 
-    setProjectsByName((prev) => ({ ...prev, [name]: created }));
+    map[name] = created; // on met à jour le cache local
     appendLog(`Projet créé : ${name}`);
 
     return created;
@@ -180,10 +182,11 @@ const CsvImportTest = () => {
     if (!name || !projetId) return null;
 
     const key = `${projetId}__${name}`;
+    const map = categoriesByKeyRef.current;
 
     // déjà en cache ?
-    if (categoriesByKey[key]) {
-      return categoriesByKey[key];
+    if (map[key]) {
+      return map[key];
     }
 
     const created = await categorieService.create({
@@ -192,7 +195,7 @@ const CsvImportTest = () => {
       description: null,
     });
 
-    setCategoriesByKey((prev) => ({ ...prev, [key]: created }));
+    map[key] = created;
     appendLog(`Catégorie créée : ${name} (projetId=${projetId})`);
 
     return created;
@@ -225,7 +228,7 @@ const CsvImportTest = () => {
           continue;
         }
 
-        // 1) projet
+        // 1) projet (réutilise le même objet pour toutes les lignes de ce projet)
         const projet = await getOrCreateProject(projectName);
         if (!projet?.id) {
           appendLog(
@@ -234,10 +237,11 @@ const CsvImportTest = () => {
           continue;
         }
 
-        // 2) catégorie (task -> categorie)
+        // 2) catégorie (task -> categorie) réutilisée pour ce projet
         const categorie = await getOrCreateCategory(projet.id, taskName);
 
         // 3) création de la saisie de temps
+        // ⚠️ collaborateur_id = utilisateur connecté (cf. saisieTempsService.create)
         await saisieTempsService.create({
           projetId: projet.id,
           categorieId: categorie?.id || null,
