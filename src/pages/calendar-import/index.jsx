@@ -16,17 +16,17 @@ import { categorieService } from '../../services/categorieService';
 const CalendarImport = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  
+
   // Form state
   const [icsUrl, setIcsUrl] = useState('');
   const [selectedWeek, setSelectedWeek] = useState('');
   const [events, setEvents] = useState([]);
   const [selectedEvents, setSelectedEvents] = useState(new Set());
-  
+
   // Métadonnées pour les menus déroulants
   const [projects, setProjects] = useState([]);
   const [categories, setCategories] = useState([]);
-  
+
   // UI state
   const [isLoading, setIsLoading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -68,7 +68,7 @@ const CalendarImport = () => {
     try {
       // Appel de l’Edge Function import-ics (déjà existante)
       const { data, error } = await supabase?.functions?.invoke('import-ics', {
-        body: { icsUrl }
+        body: { icsUrl },
       });
 
       if (error) {
@@ -85,55 +85,60 @@ const CalendarImport = () => {
       }
 
       const icsData = data?.rawIcs;
-      
-      // Parsing ICS via ical.js (import statique en haut du fichier)
+
+      // Parsing ICS via ical.js
       const jcalData = ICAL?.parse(icsData);
       const comp = new ICAL.Component(jcalData);
       const vevents = comp?.getAllSubcomponents('vevent');
 
       // Période de la semaine sélectionnée
       const [year, week] = selectedWeek?.split('-W');
-      const weekStart = getWeekStartDate(parseInt(year), parseInt(week));
+      const weekStart = getWeekStartDate(parseInt(year, 10), parseInt(week, 10));
       const weekEnd = new Date(weekStart);
       weekEnd?.setDate(weekEnd?.getDate() + 7);
 
       // Parsing des événements dans la semaine
-      const parsedEvents = vevents
-        ?.map((vevent, index) => {
-          const event = new ICAL.Event(vevent);
-          const startDate = new Date(event?.startDate?.toJSDate());
-          const endDate = new Date(event?.endDate?.toJSDate());
-          
-          // On garde seulement les événements dans la semaine
-          if (startDate < weekStart || startDate >= weekEnd) {
-            return null;
-          }
+      const parsedEvents =
+        vevents
+          ?.map((vevent, index) => {
+            const event = new ICAL.Event(vevent);
+            const startDate = new Date(event?.startDate?.toJSDate());
+            const endDate = new Date(event?.endDate?.toJSDate());
 
-          // Durée en heures décimales
-          const durationMs = endDate - startDate;
-          const durationHours = (durationMs / (1000 * 60 * 60))?.toFixed(2);
+            if (Number.isNaN(startDate?.getTime()) || Number.isNaN(endDate?.getTime())) {
+              return null;
+            }
 
-          // Commentaire = titre + lieu
-          let comment = event?.summary || '';
-          if (event?.location) {
-            comment += ` – ${event?.location}`;
-          }
+            // Filtre sur la semaine sélectionnée
+            if (startDate < weekStart || startDate >= weekEnd) {
+              return null;
+            }
 
-          return {
-            id: `event-${index}`,
-            date: startDate?.toISOString()?.split('T')?.[0],
-            startTime: startDate?.toTimeString()?.substring(0, 5),
-            endTime: endDate?.toTimeString()?.substring(0, 5),
-            duration: durationHours,
-            comment: comment,
-            summary: event?.summary || '',
-            location: event?.location || '',
-            // nouveaux champs pour les menus déroulants
-            projetId: null,
-            categorieId: null,
-          };
-        })
-        ?.filter(Boolean);
+            // Durée en heures décimales
+            const durationMs = endDate - startDate;
+            const durationHours = (durationMs / (1000 * 60 * 60))?.toFixed(2);
+
+            // Commentaire = titre + lieu
+            let comment = event?.summary || '';
+            if (event?.location) {
+              comment += ` – ${event?.location}`;
+            }
+
+            return {
+              id: `event-${index}`,
+              date: startDate?.toISOString()?.split('T')?.[0],
+              startTime: startDate?.toTimeString()?.substring(0, 5),
+              endTime: endDate?.toTimeString()?.substring(0, 5),
+              duration: durationHours,
+              comment: comment,
+              summary: event?.summary || '',
+              location: event?.location || '',
+              // nouveaux champs pour les menus déroulants
+              projetId: null,
+              categorieId: null,
+            };
+          })
+          ?.filter(Boolean) || [];
 
       if (parsedEvents?.length === 0) {
         setErrors({ events: 'Aucun événement trouvé pour cette semaine dans ce calendrier.' });
@@ -141,29 +146,28 @@ const CalendarImport = () => {
       } else {
         setEvents(parsedEvents);
         // Tous sélectionnés par défaut
-        setSelectedEvents(new Set(parsedEvents?.map(e => e?.id)));
+        setSelectedEvents(new Set(parsedEvents?.map((e) => e?.id)));
       }
     } catch (error) {
       console.error('Error loading events:', error);
-      setErrors({ 
-        load: error?.message || 'Erreur lors du chargement des événements. Vérifiez l\'URL et réessayez.' 
+      setErrors({
+        load: error?.message || 'Erreur lors du chargement des événements. Veuillez réessayer.',
       });
-      setEvents([]);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleImportEvents = async () => {
-    const eventsToImport = events?.filter(e => selectedEvents?.has(e?.id));
-    
+    const eventsToImport = events?.filter((e) => selectedEvents?.has(e?.id));
+
     if (eventsToImport?.length === 0) {
       setErrors({ import: 'Veuillez sélectionner au moins un événement à importer' });
       return;
     }
 
     // Durée > 0 pour tous les événements sélectionnés
-    const invalidEvents = eventsToImport?.filter(e => parseFloat(e?.duration) <= 0);
+    const invalidEvents = eventsToImport?.filter((e) => parseFloat(e?.duration) <= 0);
     if (invalidEvents?.length > 0) {
       setErrors({ import: 'Tous les événements doivent avoir une durée supérieure à 0' });
       return;
@@ -179,8 +183,7 @@ const CalendarImport = () => {
             date: event?.date,
             dureeHeures: parseFloat(event?.duration),
             commentaire: event?.comment,
-            // on enregistre projet & catégorie si l’utilisateur les a choisis,
-            // sinon null comme avant
+            // IMPORTANT : on garde les IDs tels quels (UUID string)
             projetId: event?.projetId ?? null,
             categorieId: event?.categorieId ?? null,
           });
@@ -191,21 +194,16 @@ const CalendarImport = () => {
       });
 
       await Promise.all(importPromises);
-      
+
       setShowSuccess(true);
-      
-      // Nettoyage après import (on garde d’abord l’écran de succès)
-      setTimeout(() => {
-        setShowSuccess(false);
-        setIcsUrl('');
-        setSelectedWeek('');
-        setEvents([]);
-        setSelectedEvents(new Set());
-      }, 3000);
+      setEvents([]);
+      setSelectedEvents(new Set());
     } catch (error) {
       console.error('Error importing events:', error);
-      setErrors({ 
-        import: `Erreur lors de l'importation: ${error?.message || 'Veuillez réessayer.'}`
+      setErrors({
+        import: `Erreur lors de l'importation: ${
+          error?.message || 'Veuillez réessayer.'
+        }`,
       });
     } finally {
       setIsImporting(false);
@@ -226,52 +224,53 @@ const CalendarImport = () => {
     if (selectedEvents?.size === events?.length) {
       setSelectedEvents(new Set());
     } else {
-      setSelectedEvents(new Set(events?.map(e => e?.id)));
+      setSelectedEvents(new Set(events?.map((e) => e?.id)));
     }
   };
 
   const handleUpdateEventComment = (eventId, newComment) => {
-    setEvents(events?.map(e => 
-      e?.id === eventId ? { ...e, comment: newComment } : e
-    ));
+    setEvents(events?.map((e) => (e?.id === eventId ? { ...e, comment: newComment } : e)));
   };
 
   const handleUpdateEventDuration = (eventId, newDuration) => {
-    setEvents(events?.map(e => 
-      e?.id === eventId ? { ...e, duration: newDuration } : e
-    ));
+    setEvents(events?.map((e) => (e?.id === eventId ? { ...e, duration: newDuration } : e)));
   };
 
+  // 🔴 CORRIGÉ : on ne fait plus Number(newProjectId), on garde la string (UUID)
   const handleUpdateEventProject = (eventId, newProjectId) => {
     setEvents(
-      events?.map(e =>
+      events?.map((e) =>
         e?.id === eventId
           ? {
               ...e,
-              projetId: newProjectId ? Number(newProjectId) : null,
+              // on garde l’ID tel quel (string), surtout pas Number()
+              projetId: newProjectId || null,
               // si on change de projet -> on remet la catégorie à null
               categorieId: null,
             }
-          : e
-      )
+          : e,
+      ),
     );
   };
 
+  // 🔴 CORRIGÉ : idem pour la catégorie
   const handleUpdateEventCategory = (eventId, newCategoryId) => {
     setEvents(
-      events?.map(e =>
+      events?.map((e) =>
         e?.id === eventId
-          ? { ...e, categorieId: newCategoryId ? Number(newCategoryId) : null }
-          : e
-      )
+          ? {
+              ...e,
+              categorieId: newCategoryId || null,
+            }
+          : e,
+      ),
     );
   };
 
-  // Calcul du lundi de la semaine ISO
   const getWeekStartDate = (year, week) => {
     const simple = new Date(year, 0, 1 + (week - 1) * 7);
     const dow = simple?.getDay();
-    const ISOweekStart = simple;
+    const ISOweekStart = new Date(simple);
     if (dow <= 4) {
       ISOweekStart?.setDate(simple?.getDate() - simple?.getDay() + 1);
     } else {
@@ -317,30 +316,27 @@ const CalendarImport = () => {
 
   return (
     <>
-      <NavigationHeader activeItem="calendar-import" />
+      <NavigationHeader
+        title="Import calendrier"
+        description="Importez vos événements Outlook / Google Calendar comme saisies de temps."
+      />
 
       <div className="min-h-screen bg-background pt-20 px-4">
         <div className="max-w-6xl mx-auto space-y-6">
-          {/* Header */}
           <div className="flex items-center justify-between">
             <div>
-              <div className="flex items-center space-x-3">
-                <Icon name="Calendar" size={24} className="text-primary" />
-                <h1 className="text-2xl font-semibold text-foreground">Import calendrier</h1>
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Importez vos événements Outlook (.ics) comme saisies de temps. Le nom de
-                l&apos;événement sera utilisé comme commentaire. Vous pourrez ensuite compléter
-                le projet et la catégorie dans la page &quot;Mes saisies&quot;, ou directement
-                ici avant l&apos;import.
+              <h1 className="text-2xl font-semibold text-foreground">Import de calendrier</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Collez l&apos;URL publique de votre calendrier au format .ics, sélectionnez une
+                semaine et importez les événements comme saisies de temps.
               </p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-6 items-start">
-            {/* Main content */}
+            {/* Contenu principal */}
             <div className="space-y-4">
-              {/* Erreurs */}
+              {/* Erreurs globales */}
               {(errors?.url ||
                 errors?.week ||
                 errors?.load ||
@@ -363,11 +359,7 @@ const CalendarImport = () => {
               <div className="space-y-6">
                 {/* Formulaire URL + semaine */}
                 <div className="bg-card p-6 rounded-lg border border-border card-shadow space-y-6">
-                  <IcsUrlInput
-                    value={icsUrl}
-                    onChange={setIcsUrl}
-                    error={errors?.url}
-                  />
+                  <IcsUrlInput value={icsUrl} onChange={setIcsUrl} error={errors?.url} />
 
                   <WeekSelector
                     value={selectedWeek}
@@ -379,7 +371,7 @@ const CalendarImport = () => {
                     <Button
                       variant="default"
                       onClick={handleLoadEvents}
-                      disabled={isLoading || !icsUrl?.trim() || !selectedWeek}
+                      disabled={isLoading}
                       iconName="Download"
                       iconPosition="left"
                     >
@@ -404,28 +396,26 @@ const CalendarImport = () => {
                       onUpdateCategory={handleUpdateEventCategory}
                     />
 
-                    {/* Actions d'import */}
-                    <div className="bg-card p-6 rounded-lg border border-border card-shadow">
-                      <div className="flex items-center justify-between">
-                        <div className="text-sm text-muted-foreground">
-                          <span className="font-medium text-foreground">
-                            {selectedEvents?.size}
-                          </span>{' '}
-                          événement(s) sélectionné(s) sur {events?.length}
-                        </div>
-
-                        <Button
-                          variant="default"
-                          onClick={handleImportEvents}
-                          disabled={isImporting || selectedEvents?.size === 0}
-                          iconName="Upload"
-                          iconPosition="left"
-                        >
-                          {isImporting
-                            ? 'Import en cours...'
-                            : 'Créer les saisies de temps sélectionnées'}
-                        </Button>
+                    {/* Résumé & bouton d'import */}
+                    <div className="bg-card p-4 rounded-lg border border-border card-shadow flex items-center justify-between">
+                      <div className="text-sm text-muted-foreground">
+                        <span className="font-medium text-foreground">
+                          {selectedEvents?.size}
+                        </span>{' '}
+                        événement(s) sélectionné(s) sur {events?.length}
                       </div>
+
+                      <Button
+                        variant="default"
+                        onClick={handleImportEvents}
+                        disabled={isImporting || selectedEvents?.size === 0}
+                        iconName="Upload"
+                        iconPosition="left"
+                      >
+                        {isImporting
+                          ? 'Import en cours...'
+                          : 'Créer les saisies de temps sélectionnées'}
+                      </Button>
                     </div>
                   </>
                 )}
@@ -438,16 +428,19 @@ const CalendarImport = () => {
                 <Icon name="Info" size={18} className="text-primary" />
                 <h2 className="text-sm font-semibold text-foreground">Comment ça marche ?</h2>
               </div>
+
               <div className="space-y-3 text-sm text-muted-foreground">
                 <p>
-                  1. Copiez l&apos;URL publique de votre calendrier Outlook au format .ics
-                  (commençant par <code>https://</code> ou <code>webcal://</code>).
+                  1. Copiez l&apos;URL publique de votre calendrier Outlook ou Google au format
+                  <span className="font-mono bg-muted px-1 rounded ml-1">.ics</span> (commençant par
+                  <span className="font-mono bg-muted px-1 rounded ml-1">https://</span> ou
+                  <span className="font-mono bg-muted px-1 rounded ml-1">webcal://</span>).
                 </p>
                 <p>2. Choisissez la semaine que vous souhaitez importer.</p>
                 <p>3. Cliquez sur &quot;Charger les événements&quot; pour voir un aperçu.</p>
                 <p>
-                  4. Sélectionnez les événements à importer, ajustez la durée et associez un
-                  projet / une catégorie.
+                  4. Sélectionnez les événements à importer, ajustez la durée et associez un projet
+                  / une catégorie si nécessaire.
                 </p>
                 <p>
                   5. Cliquez sur &quot;Créer les saisies de temps sélectionnées&quot; pour
