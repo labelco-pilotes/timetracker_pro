@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import NavigationHeader from '../navigation-header';
-import Icon from '../../components/AppIcon';
-import Button from '../../components/ui/Button';
-import { projetService } from '../../services/projetService';
-import { categorieService } from '../../services/categorieService';
-import { saisieTempsService } from '../../services/saisieTempsService';
+import NavigationHeader from './navigation-header';
+import Icon from '../components/AppIcon';
+import Button from '../components/ui/Button';
+import { projetService } from '../services/projetService';
+import { categorieService } from '../services/categorieService';
+import { saisieTempsService } from '../services/saisieTempsService';
 
 /**
  * Page TEMPORAIRE pour importer un CSV de test :
- * Date, User, Project, Task, Decimal Hours
+ * Colonnes attendues : Date, User, Project, Task, Decimal Hours
  *
  * - Project  -> projet
  * - Task     -> catégorie
@@ -120,7 +120,8 @@ const CsvImportTest = () => {
             return null;
           }
 
-          const safe = (j) => (parts[j] !== undefined ? parts[j].replace(/"/g, '').trim() : '');
+          const safe = (j) =>
+            parts[j] !== undefined ? parts[j].replace(/"/g, '').trim() : '';
 
           return {
             _line: i + 2, // numéro de ligne dans le fichier (à partir de 1)
@@ -284,7 +285,6 @@ const CsvImportTest = () => {
             </div>
           </div>
 
-          {/* Bloc principal */}
           <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-6 items-start">
             {/* Zone de gauche */}
             <div className="space-y-4">
@@ -341,7 +341,7 @@ const CsvImportTest = () => {
                 </div>
               </div>
 
-              {/* Petit aperçu des premières lignes */}
+              {/* Aperçu des premières lignes */}
               {rows.length > 0 && (
                 <div className="bg-card p-4 rounded-lg border border-border card-shadow">
                   <h2 className="text-sm font-semibold text-foreground mb-3">
@@ -396,8 +396,8 @@ const CsvImportTest = () => {
               </div>
               <p className="text-xs text-muted-foreground">
                 Cette page est conçue comme un outil de test temporaire. Une
-                fois vos essais terminés, vous pouvez supprimer le dossier{' '}
-                <span className="font-mono">src/pages/csv-import-test</span> et
+                fois vos essais terminés, vous pouvez supprimer le fichier{' '}
+                <span className="font-mono">src/pages/CsvImportTest.jsx</span> et
                 la route associée.
               </p>
             </div>
